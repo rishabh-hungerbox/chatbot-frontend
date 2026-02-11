@@ -12,16 +12,36 @@ import { track } from './utils/analytics';
 import { Modal } from './ui/modals';
 import {
   BackButtonSvgIcon,
-  CopyIcon,
+  CopySvgIcon,
+  HistorySvgIcon,
+  InfoSvgIcon,
   MicrophoneSvgIcon,
+  RedCrossCloseSvgIcon,
   SendArrowSvgIcon,
-  ThumbsUpIcon,
-  ThumbsDownIcon,
-  InfoIcon,
+  ThumbsDownSvgIcon,
+  ThumbsUpSvgIcon,
   NewIcon,
 } from './ui/icons';
 import Lottie from 'lottie-react';
 import aiIconAnimation from './ui/ai_icon.json';
+import messageLoadingAnimation from './ui/messge_loading.json';
+
+/** Generates a unique session ID - never reuses values. Prefers crypto.randomUUID when available. */
+function generateUniqueSessionId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return uuidv4();
+}
+
+const LOADING_MESSAGES = [
+  'Working on your request...',
+  'Please be patient...',
+  'This might take a minute or two...',
+  'Thinking...',
+  'Fetching the requested data...',
+  'Almost there...',
+];
 
 function decodeMaybeBase64(value: any): string {
   try {
@@ -66,6 +86,7 @@ export function ChatbotApp() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [tokenLimitReached, setTokenLimitReached] = useState(false);
+  const [loadingTick, setLoadingTick] = useState(0);
 
   const [sessionHistory, setSessionHistory] = useState<SessionSummary[] | null>(null);
 
@@ -80,19 +101,14 @@ export function ChatbotApp() {
   const [currentSessionId, setCurrentSessionId] = useState<string>(() => {
     const fromQs = cfg.initialSessionId;
     if (fromQs) return fromQs;
-    try {
-      const saved = localStorage.getItem('hb-admin-chatbot-session-id');
-      if (saved) return saved;
-    } catch {
-      // ignore
-    }
-    return uuidv4();
+    return generateUniqueSessionId();
   });
 
   const [hasAssistantRespondedInSession, setHasAssistantRespondedInSession] = useState(false);
 
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const [metaOpen, setMetaOpen] = useState(false);
   const [metaForMessage, setMetaForMessage] = useState<ChatMessage | null>(null);
@@ -133,13 +149,29 @@ export function ChatbotApp() {
     }
   }, [cfg.parentOrigin]);
 
+  const adjustMessageInputHeight = useCallback(() => {
+    const el = messageInputRef.current;
+    if (!el) return;
+    el.style.height = '0';
+    const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 18;
+    const minH = 2 * lineHeight;
+    const maxH = 8 * lineHeight;
+    const h = Math.min(Math.max(el.scrollHeight, minH), maxH);
+    el.style.height = `${h}px`;
+  }, []);
+
   useEffect(() => {
-    try {
-      localStorage.setItem('hb-admin-chatbot-session-id', currentSessionId);
-    } catch {
-      // ignore
-    }
-  }, [currentSessionId]);
+    adjustMessageInputHeight();
+  }, [userMessage, adjustMessageInputHeight]);
+
+  useEffect(() => {
+    if (!isLoading) return;
+    setLoadingTick(0);
+    const id = setInterval(() => {
+      setLoadingTick((prev) => prev + 1);
+    }, 2000);
+    return () => clearInterval(id);
+  }, [isLoading]);
 
   useEffect(() => {
     // update "hasAssistantRespondedInSession" similar to Angular
@@ -181,7 +213,7 @@ export function ChatbotApp() {
     fetchSessionHistory();
   }, [fetchSessionHistory]);
 
-  const isHistoryOpen = true;
+  const [isHistoryOpen, setIsHistoryOpen] = useState(true);
 
   const startNewChat = useCallback(() => {
     track('new_chat_icon_click', { source: 'webview', timestamp: new Date().toISOString() });
@@ -190,7 +222,7 @@ export function ChatbotApp() {
     setSelectedFile(null);
     setSelectedFilePreviewUrl(null);
     setMessages([buildDefaultGreeting()]);
-    const newId = uuidv4();
+    const newId = generateUniqueSessionId();
     setCurrentSessionId(newId);
   }, []);
 
@@ -220,8 +252,9 @@ export function ChatbotApp() {
     setSelectedFilePreviewUrl(null);
   }, [selectedFilePreviewUrl]);
 
-  const onSend = useCallback(async () => {
-    if ((!userMessage.trim() && !selectedFile) || isLoading || tokenLimitReached) return;
+  const onSend = useCallback(async (overrideMessage?: string) => {
+    const textToSend = (overrideMessage ?? userMessage).trim();
+    if ((!textToSend && !selectedFile) || isLoading || tokenLimitReached) return;
     if (!cfg.apiBaseUrl) {
       setMessages((prev) => [
         ...prev,
@@ -232,7 +265,7 @@ export function ChatbotApp() {
 
     const fileToSend = selectedFile;
     const fileName = fileToSend?.name;
-    const userText = userMessage.trim();
+    const userText = textToSend;
 
     let sentImageUrl: string | undefined;
     if (fileToSend) {
@@ -432,11 +465,13 @@ export function ChatbotApp() {
         return { ...prev, [messageIndex]: cur };
       });
 
-      // auto-submit if all selected
+      // auto-submit if all selected (only consider questions that have choices)
       const opts = (messages[messageIndex] as any)?.options || {};
-      const questions = Object.keys(opts);
+      const questions = Object.keys(opts).filter(
+        (q) => Array.isArray(opts[q]) && (opts[q]?.length ?? 0) > 0
+      );
       const nextSel = { ...(selectedOptions[messageIndex] || {}), [question]: key };
-      const allSelected = questions.every((q) => !!nextSel[q]);
+      const allSelected = questions.length > 0 && questions.every((q) => !!nextSel[q]);
       if (allSelected) {
         const parts: string[] = [];
         questions.forEach((q) => {
@@ -448,7 +483,7 @@ export function ChatbotApp() {
         const msgText = parts.join('\n').trim();
         if (msgText) {
           setUserMessage(msgText);
-          setTimeout(() => onSend(), 200);
+          onSend(msgText);
         }
       }
     },
@@ -525,8 +560,14 @@ export function ChatbotApp() {
       <div className={clsx('chatbot-dialog', isHistoryOpen && 'history-open')}>
         <div className={clsx('history-sidebar', isHistoryOpen && 'open')}>
           <div className="history-sidebar-header">
-            <span>Previous Chats:</span>
-            <button className="history-header-action" type="button" aria-label="Collapse history" title="Collapse history" disabled>
+            <span>Previous Chats</span>
+            <button
+              className="history-header-action"
+              type="button"
+              aria-label="Collapse history"
+              title="Collapse history"
+              onClick={() => setIsHistoryOpen(false)}
+            >
               <BackButtonSvgIcon />
             </button>
           </div>
@@ -571,6 +612,20 @@ export function ChatbotApp() {
             <p className="chat-title">AI Assistant</p>
           </div>
           <div className="header-right">
+            {!isHistoryOpen && (
+              <button
+                className="header-btn-pill history-toggle-btn"
+                onClick={() => setIsHistoryOpen(true)}
+                aria-label="Previous Chats"
+                title="Previous Chats"
+                type="button"
+              >
+                <span className="header-pill-icon" aria-hidden="true">
+                  <HistorySvgIcon />
+                </span>
+                <span>Previous Chats</span>
+              </button>
+            )}
             <button
               className="header-btn-pill"
               onClick={startNewChat}
@@ -585,20 +640,20 @@ export function ChatbotApp() {
               <span>New</span>
             </button>
             <button
-              className="header-btn-icon close-btn-desktop close-btn"
-              onClick={cfg.allowClose ? onClose : undefined}
-              aria-label="Close"
-              title={cfg.allowClose ? 'Close' : 'Close disabled'}
+              className="header-close-icon-btn"
               type="button"
-              disabled={!cfg.allowClose}
+              aria-label="Close"
+              title="Close"
+              onClick={() => {}}
             >
-              ✕
+              <RedCrossCloseSvgIcon />
             </button>
           </div>
         </div>
 
         <div className="chatbot-content">
-          <div className="messages-container" ref={messagesContainerRef}>
+          <div className="chat-content-column">
+            <div className="messages-container" ref={messagesContainerRef}>
             {messages.map((m, i) => {
               const hasImg = !!(m.sentImageUrl || (m.sentImageUrls && m.sentImageUrls.length > 0));
               return (
@@ -608,96 +663,101 @@ export function ChatbotApp() {
                   data-msg-idx={i}
                 >
                   {m.role === 'assistant' ? (
-                    <div className="message-content">
-                      <div
-                        className="assistant-html"
-                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(m.content) }}
-                        onClick={(e) => {
-                          const t = e.target as HTMLElement | null;
-                          if (t && t.tagName === 'IMG') {
-                            const src = (t as HTMLImageElement).src;
-                            if (src) setImagePreviewUrl(src);
-                          }
-                        }}
-                      />
+                    <div className="assistant-message-frame">
+                      <div className="assistant-message-body">
+                        <div
+                          className="assistant-html"
+                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(m.content) }}
+                          onClick={(e) => {
+                            const t = e.target as HTMLElement | null;
+                            if (t && t.tagName === 'IMG') {
+                              const src = (t as HTMLImageElement).src;
+                              if (src) setImagePreviewUrl(src);
+                            }
+                          }}
+                        />
 
-                      {m.options ? (
-                        <div className={clsx('options-container', (!isLatestOptionsMessage(i) || isLoading) && 'disabled')}>
-                          {Object.keys(m.options || {}).map((question) => (
-                            <div className="option-group" key={question}>
-                              <div className="option-question">{question}</div>
-                              <div className="option-choices">
-                                {(m.options?.[question] || []).map((choice) => {
-                                  const sel = (selectedOptions[i] || {})[question];
-                                  return (
-                                    <button
-                                      key={choice.key}
-                                      type="button"
-                                      className={clsx('option-choice-btn', sel === choice.key && 'selected')}
-                                      disabled={!isLatestOptionsMessage(i) || isLoading}
-                                      onClick={() => onOptionSelect(i, question, choice.key)}
-                                      aria-label={`Select ${choice.value}`}
-                                    >
-                                      <span className="choice-key">{choice.key}</span>
-                                      <span className="choice-value">{choice.value}</span>
-                                    </button>
-                                  );
-                                })}
+                        {m.options &&
+                        Object.keys(m.options).length > 0 &&
+                        Object.keys(m.options).some(
+                          (q) => Array.isArray(m.options?.[q]) && (m.options?.[q]?.length ?? 0) > 0
+                        ) ? (
+                          <div className={clsx('options-container', (!isLatestOptionsMessage(i) || isLoading) && 'disabled')}>
+                            {Object.keys(m.options || {})
+                              .filter((q) => Array.isArray(m.options?.[q]) && (m.options?.[q]?.length ?? 0) > 0)
+                              .map((question) => (
+                              <div className="option-group" key={question}>
+                                <div className="option-question">{question}</div>
+                                <div className="option-choices">
+                                  {(m.options?.[question] || []).map((choice) => {
+                                    const sel = (selectedOptions[i] || {})[question];
+                                    return (
+                                      <button
+                                        key={choice.key}
+                                        type="button"
+                                        className={clsx('option-choice-btn', sel === choice.key && 'selected')}
+                                        disabled={!isLatestOptionsMessage(i) || isLoading}
+                                        onClick={() => onOptionSelect(i, question, choice.key)}
+                                        aria-label={`Select ${choice.value}`}
+                                      >
+                                        <span className="choice-key">{choice.key}</span>
+                                        <span className="choice-value">{choice.value}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
 
-                      <div className="assistant-footer">
-                        <div className="footer-left">
-                          <button
-                            className="footer-action-btn"
-                            onClick={() => onCopyMessage(m.content || '')}
-                            title="Copy"
-                            aria-label="Copy"
-                            type="button"
-                          >
-                            <CopyIcon />
-                          </button>
-                          {i > 0 ? (
-                            <>
-                              <button
-                                type="button"
-                                className={clsx('rating-btn', m.good_response === true && 'selected')}
-                                onClick={() => onThumbsUp(m)}
-                                aria-label="Thumbs up"
-                                title="Helpful"
-                              >
-                                <ThumbsUpIcon filled={m.good_response === true} />
-                              </button>
-                              <button
-                                type="button"
-                                className={clsx('rating-btn', m.good_response === false && 'selected')}
-                                onClick={() => onThumbsDown(m)}
-                                aria-label="Thumbs down"
-                                title="Not helpful"
-                              >
-                                <ThumbsDownIcon filled={m.good_response === false} />
-                              </button>
-                            </>
-                          ) : null}
+                      {i > 0 ? (
+                        <div className="assistant-message-actions">
+                          <div className="assistant-actions-bubble">
+                            <button
+                              className="assistant-action-btn"
+                              onClick={() => onCopyMessage(m.content || '')}
+                              title="Copy"
+                              aria-label="Copy"
+                              type="button"
+                            >
+                              <CopySvgIcon />
+                            </button>
+                            <span className="assistant-actions-separator" aria-hidden="true" />
+                            <button
+                              type="button"
+                              className={clsx('assistant-action-btn rating-btn', m.good_response === false && 'selected')}
+                              onClick={() => onThumbsDown(m)}
+                              aria-label="Thumbs down"
+                              title="Not helpful"
+                            >
+                              <ThumbsDownSvgIcon filled={m.good_response === false} />
+                            </button>
+                            <button
+                              type="button"
+                              className={clsx('assistant-action-btn rating-btn', m.good_response === true && 'selected')}
+                              onClick={() => onThumbsUp(m)}
+                              aria-label="Thumbs up"
+                              title="Helpful"
+                            >
+                              <ThumbsUpSvgIcon filled={m.good_response === true} />
+                            </button>
+                          </div>
                           {m.timeTakenSeconds !== undefined ? (
                             <span className="time-taken">(Time Taken: {m.timeTakenSeconds} sec)</span>
                           ) : null}
-                          {i > 0 ? (
-                            <button
-                              className="meta-info-btn-inline"
-                              onClick={() => openMetaForMessage(m)}
-                              title="Show execution details"
-                              aria-label="Show execution details"
-                              type="button"
-                            >
-                              <InfoIcon />
-                            </button>
-                          ) : null}
+                          <button
+                            className="assistant-action-btn meta-info-btn"
+                            onClick={() => openMetaForMessage(m)}
+                            title="Show execution details"
+                            aria-label="Show execution details"
+                            type="button"
+                          >
+                            <InfoSvgIcon />
+                          </button>
                         </div>
-                      </div>
+                      ) : null}
                     </div>
                   ) : (
                     <>
@@ -722,12 +782,26 @@ export function ChatbotApp() {
 
             {isLoading ? (
               <div className="assistant-message message">
-                <div className="message-content">Working on your request...</div>
+                <div className="assistant-message-frame">
+                  <div className="assistant-message-body loading-message-body">
+                    <div className="loading-lottie-wrap">
+                      <Lottie
+                        animationData={messageLoadingAnimation}
+                        loop
+                        aria-label="Loading"
+                        className="loading-lottie"
+                      />
+                    </div>
+                    <span className="loading-message-text">
+                      {LOADING_MESSAGES[loadingTick % LOADING_MESSAGES.length]}
+                    </span>
+                  </div>
+                </div>
               </div>
             ) : null}
-          </div>
+            </div>
 
-          <div className="footer-container">
+            <div className="footer-container">
             {tokenLimitReached ? (
               <div className="context-limit-message">
                 <span>Context limit reached. Please start a New Chat</span>
@@ -740,11 +814,14 @@ export function ChatbotApp() {
             <div className="input-row">
               <div className="input-wrapper">
                 <textarea
+                  ref={(r) => {
+                    messageInputRef.current = r;
+                  }}
                   className="message-input"
                   value={userMessage}
                   onChange={(e) => setUserMessage(e.target.value)}
                   placeholder="Ask anything you need..."
-                  rows={1}
+                  rows={2}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
@@ -775,7 +852,7 @@ export function ChatbotApp() {
                   </button>
                   <button
                     className="send-btn send-btn-inline input-icon-btn"
-                    onClick={onSend}
+                    onClick={() => onSend()}
                     disabled={(!userMessage.trim() && !selectedFile) || tokenLimitReached || isLoading}
                     aria-label="Send message"
                     title="Send message"
@@ -787,7 +864,7 @@ export function ChatbotApp() {
               </div>
               <button
                 className="send-btn send-btn-mobile"
-                onClick={onSend}
+                onClick={() => onSend()}
                 disabled={(!userMessage.trim() && !selectedFile) || tokenLimitReached || isLoading}
                 aria-label="Send message"
                 title="Send message"
@@ -820,6 +897,7 @@ export function ChatbotApp() {
                 </button>
               </div>
             ) : null}
+            </div>
           </div>
         </div>
         </div>

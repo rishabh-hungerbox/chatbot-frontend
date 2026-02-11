@@ -60,6 +60,7 @@ export class ChatbotApiClient {
     const form = new FormData();
     form.append("session_id", params.session_id);
     form.append("query", params.query);
+    form.append("html_response", "true");
     if (params.model_name) form.append("model_name", params.model_name);
     if (params.file) form.append("file", params.file);
 

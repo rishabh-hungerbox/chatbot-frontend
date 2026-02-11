@@ -43,6 +43,22 @@ export function CopyIcon({ className }: { className?: string }) {
   );
 }
 
+/** Copy icon from copy_icon.svg */
+export function CopySvgIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M10 0.833984H3.33333C2.32081 0.833984 1.5 1.6548 1.5 2.66732V10.6673C1.5 11.6798 2.32081 12.5007 3.33333 12.5007H10C11.0125 12.5007 11.8333 11.6798 11.8333 10.6673V2.66732C11.8333 1.6548 11.0125 0.833984 10 0.833984Z"
+        fill="currentColor"
+      />
+      <path
+        d="M12.6665 15.1667H5.99984C5.51372 15.1663 5.0476 14.973 4.70386 14.6293C4.36012 14.2856 4.16686 13.8195 4.1665 13.3333V5.33333C4.16686 4.84721 4.36012 4.3811 4.70386 4.03736C5.0476 3.69362 5.51372 3.50035 5.99984 3.5H12.6665C13.1526 3.50035 13.6187 3.69362 13.9625 4.03736C14.3062 4.3811 14.4995 4.84721 14.4998 5.33333V13.3333C14.4995 13.8195 14.3062 14.2856 13.9625 14.6293C13.6187 14.973 13.1526 15.1663 12.6665 15.1667ZM5.99984 4.5C5.77893 4.50035 5.56718 4.58826 5.41097 4.74447C5.25477 4.90067 5.16686 5.11243 5.1665 5.33333V13.3333C5.16686 13.5542 5.25477 13.766 5.41097 13.9222C5.56718 14.0784 5.77893 14.1663 5.99984 14.1667H12.6665C12.8874 14.1663 13.0992 14.0784 13.2554 13.9222C13.4116 13.766 13.4995 13.5542 13.4998 13.3333V5.33333C13.4995 5.11243 13.4116 4.90067 13.2554 4.74447C13.0992 4.58826 12.8874 4.50035 12.6665 4.5H5.99984Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 export function MicIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -84,69 +100,69 @@ export function SendIcon({ className }: { className?: string }) {
 }
 
 export function ThumbsUpIcon({ filled }: { filled?: boolean }) {
-  if (filled) {
-    return (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z" />
-      </svg>
-    );
-  }
+  return <ThumbsUpSvgIcon filled={filled} />;
+}
+
+export function ThumbsDownIcon({ filled }: { filled?: boolean }) {
+  return <ThumbsDownSvgIcon filled={filled} />;
+}
+
+/** Thumbs up from thumbs.svg - gray when not selected, primary color when selected */
+export function ThumbsUpSvgIcon({ filled, className }: { filled?: boolean; className?: string }) {
+  const fillColor = filled ? '#3A1593' : '#9b9b9b';
   return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
+    <svg className={className} width="15" height="14" viewBox="0 0 15 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M9.33333 0H3.33333C2.78 0 2.30667 0.333333 2.10667 0.813333L0.0933333 5.51333C0.0333333 5.66667 0 5.82667 0 6V7.33333C0 8.06667 0.6 8.66667 1.33333 8.66667H5.54L4.90667 11.7133L4.88667 11.9267C4.88667 12.2 5 12.4533 5.18 12.6333L5.88667 13.3333L10.28 8.94C10.52 8.7 10.6667 8.36667 10.6667 8V1.33333C10.6667 0.6 10.0667 0 9.33333 0ZM12 0V8H14.6667V0H12Z" fill={fillColor} />
     </svg>
   );
 }
 
-export function ThumbsDownIcon({ filled }: { filled?: boolean }) {
-  if (filled) {
-    return (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z" />
-      </svg>
-    );
-  }
+/** Thumbs down from thumbs.svg (flipped) - gray when not selected, primary color when selected */
+export function ThumbsDownSvgIcon({ filled, className }: { filled?: boolean; className?: string }) {
+  const fillColor = filled ? '#3A1593' : '#9b9b9b';
   return (
     <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
+      className={className}
+      width="15"
+      height="14"
+      viewBox="0 0 15 14"
       fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ transform: 'scale(-1,-1)', transformOrigin: 'center' }}
     >
-      <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
+      <path d="M9.33333 0H3.33333C2.78 0 2.30667 0.333333 2.10667 0.813333L0.0933333 5.51333C0.0333333 5.66667 0 5.82667 0 6V7.33333C0 8.06667 0.6 8.66667 1.33333 8.66667H5.54L4.90667 11.7133L4.88667 11.9267C4.88667 12.2 5 12.4533 5.18 12.6333L5.88667 13.3333L10.28 8.94C10.52 8.7 10.6667 8.36667 10.6667 8V1.33333C10.6667 0.6 10.0667 0 9.33333 0ZM12 0V8H14.6667V0H12Z" fill={fillColor} />
     </svg>
   );
 }
 
 export function InfoIcon({ className }: { className?: string }) {
+  return <InfoSvgIcon className={className} />;
+}
+
+/** Info icon from info_icon.svg */
+export function InfoSvgIcon({ className }: { className?: string }) {
+  const clipId = useId();
   return (
-    <svg
-      className={className}
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <line x1="12" y1="16" x2="12" y2="12" />
-      <line x1="12" y1="8" x2="12.01" y2="8" />
+    <svg className={className} width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <g clipPath={`url(#${clipId})`}>
+        <path
+          d="M6 10.5C8.48528 10.5 10.5 8.48528 10.5 6C10.5 3.51472 8.48528 1.5 6 1.5C3.51472 1.5 1.5 3.51472 1.5 6C1.5 8.48528 3.51472 10.5 6 10.5Z"
+          fill="#F4F6FF"
+        />
+        <path
+          d="M6.75 3.375C6.75 2.96079 6.41421 2.625 6 2.625C5.58579 2.625 5.25 2.96079 5.25 3.375C5.25 3.78921 5.58579 4.125 6 4.125C6.41421 4.125 6.75 3.78921 6.75 3.375Z"
+          fill="#FF5148"
+        />
+        <path
+          d="M6.75 5.625C6.75 5.21079 6.41421 4.875 6 4.875C5.58579 4.875 5.25 5.21079 5.25 5.625V8.625C5.25 9.03921 5.58579 9.375 6 9.375C6.41421 9.375 6.75 9.03921 6.75 8.625V5.625Z"
+          fill="#3A1593"
+        />
+      </g>
+      <defs>
+        <clipPath id={clipId}>
+          <rect width="12" height="12" fill="white" />
+        </clipPath>
+      </defs>
     </svg>
   );
 }
@@ -170,6 +186,33 @@ export function HistoryIcon({ className }: { className?: string }) {
   );
 }
 
+/** History/clock icon from history_icon.svg - for Previous Chats button */
+export function HistorySvgIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M8 12.5C10.4853 12.5 12.5 10.4853 12.5 8C12.5 5.51472 10.4853 3.5 8 3.5C5.51472 3.5 3.5 5.51472 3.5 8C3.5 10.4853 5.51472 12.5 8 12.5Z"
+        fill="#3A1593"
+      />
+      <path
+        d="M8 1C6.56971 1.00142 5.17402 1.44 4 2.25696V2C4 1.86739 3.94732 1.74021 3.85355 1.64645C3.75979 1.55268 3.63261 1.5 3.5 1.5C3.36739 1.5 3.24021 1.55268 3.14645 1.64645C3.05268 1.74021 3 1.86739 3 2V3.5C2.99996 3.56567 3.01287 3.63071 3.03798 3.69139C3.0631 3.75207 3.09993 3.8072 3.14636 3.85364C3.1928 3.90007 3.24793 3.9369 3.30861 3.96202C3.36929 3.98713 3.43433 4.00004 3.5 4H5C5.13261 4 5.25979 3.94732 5.35355 3.85355C5.44732 3.75979 5.5 3.63261 5.5 3.5C5.5 3.36739 5.44732 3.24021 5.35355 3.14645C5.25979 3.05268 5.13261 3 5 3H4.68963C5.80398 2.26322 7.13241 1.91959 8.46424 2.0236C9.79607 2.12761 11.0551 2.6733 12.0415 3.57414C13.028 4.47498 13.6854 5.67938 13.9096 6.99632C14.1337 8.31327 13.9118 9.66736 13.2789 10.8438C12.6461 12.0203 11.6385 12.9518 10.4161 13.4906C9.19371 14.0294 7.8264 14.1446 6.53105 13.818C5.23571 13.4914 4.08649 12.7417 3.26566 11.6877C2.44483 10.6337 1.9994 9.33589 2 8C2 7.86739 1.94732 7.74021 1.85355 7.64645C1.75979 7.55268 1.63261 7.5 1.5 7.5C1.36739 7.5 1.24021 7.55268 1.14645 7.64645C1.05268 7.74021 1 7.86739 1 8C1 9.38447 1.41054 10.7378 2.17971 11.889C2.94888 13.0401 4.04213 13.9373 5.32122 14.4672C6.6003 14.997 8.00776 15.1356 9.36563 14.8655C10.7235 14.5954 11.9708 13.9287 12.9497 12.9497C13.9287 11.9708 14.5954 10.7235 14.8655 9.36563C15.1356 8.00776 14.997 6.6003 14.4672 5.32122C13.9373 4.04213 13.0401 2.94888 11.889 2.17971C10.7378 1.41054 9.38447 1 8 1Z"
+        fill="#3A1593"
+      />
+      <path
+        d="M9.77734 8.584L8.5 7.73242V5.5C8.5 5.36739 8.44732 5.24021 8.35355 5.14645C8.25979 5.05268 8.13261 5 8 5C7.86739 5 7.74021 5.05268 7.64645 5.14645C7.55268 5.24021 7.5 5.36739 7.5 5.5V8C7.50002 8.08231 7.52035 8.16334 7.55919 8.23591C7.59803 8.30847 7.65418 8.37033 7.72265 8.416L9.22266 9.416C9.333 9.48802 9.4673 9.51357 9.59638 9.48711C9.72546 9.46064 9.83887 9.38429 9.91196 9.27465C9.98506 9.16502 10.0119 9.03097 9.98671 8.90164C9.9615 8.77231 9.88626 8.65816 9.77734 8.584Z"
+        fill="#FFCE1A"
+      />
+    </svg>
+  );
+}
+
 export function PlusIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -185,6 +228,25 @@ export function PlusIcon({ className }: { className?: string }) {
     >
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+/** Red cross close icon - circle with X */
+export function RedCrossCloseSvgIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M10 4.05768e-06C8.02219 4.05768e-06 6.08879 0.586494 4.4443 1.68531C2.79981 2.78412 1.51809 4.34591 0.761209 6.17317C0.00433284 8.00043 -0.193701 10.0111 0.192152 11.9509C0.578004 13.8907 1.53041 15.6725 2.92894 17.0711C4.32746 18.4696 6.10929 19.422 8.0491 19.8079C9.98891 20.1937 11.9996 19.9957 13.8268 19.2388C15.6541 18.4819 17.2159 17.2002 18.3147 15.5557C19.4135 13.9112 20 11.9778 20 10C20.0012 8.68645 19.7433 7.38556 19.2412 6.17177C18.7391 4.95798 18.0025 3.85512 17.0737 2.9263C16.1449 1.99747 15.042 1.26093 13.8282 0.758798C12.6144 0.25667 11.3136 -0.00117974 10 4.05768e-06ZM15 13.59L13.59 15L10 11.41L6.41 15L5 13.59L8.59 10L5 6.41L6.41 5L10 8.59L13.59 5L15 6.41L11.41 10L15 13.59Z"
+        fill="#FF5148"
+      />
     </svg>
   );
 }
@@ -226,10 +288,14 @@ export function BackButtonSvgIcon({ className }: { className?: string }) {
       viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
+      version="1.1"
+      xmlnsXlink="http://www.w3.org/1999/xlink"
+      transform="matrix(-1,0,0,1,0,0)"
     >
       <path
         d="M7.84033 6.83352L12.9853 11.989L7.84033 17.1445L9.42433 18.7285L16.1638 11.989L9.42433 5.24952L7.84033 6.83352Z"
-        fill="currentColor"
+        fill="black"
+        fillOpacity="0.87"
       />
     </svg>
   );
