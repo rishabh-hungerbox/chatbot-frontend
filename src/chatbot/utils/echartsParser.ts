@@ -111,3 +111,12 @@ export function extractChartWidth(chartHtml: string): number | null {
   const w = parseInt(m[1], 10);
   return Number.isFinite(w) && w > 0 ? w : null;
 }
+
+const PIE_CHART_REGEX = /type\s*:\s*['"]pie['"]/i;
+
+/**
+ * Detects if the chart HTML represents a pie chart (pyecharts Pie).
+ */
+export function isPieChart(chartHtml: string): boolean {
+  return PIE_CHART_REGEX.test(chartHtml || "");
+}

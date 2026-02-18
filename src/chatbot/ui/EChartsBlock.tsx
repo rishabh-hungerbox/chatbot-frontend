@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { extractChartHeight, extractChartWidth } from '../utils/echartsParser';
+import { extractChartHeight, extractChartWidth, isPieChart } from '../utils/echartsParser';
 
 const DEFAULT_HEIGHT = 520;
 const MIN_HEIGHT = 280;
 const MAX_HEIGHT = 1200;
+const PIE_MIN_HEIGHT = 320;
+const PIE_MAX_HEIGHT = 520;
 const DEFAULT_MIN_WIDTH = 600;
 
 /**
@@ -22,9 +24,12 @@ export function EChartsBlock({ chartHtml }: { chartHtml: string }) {
 
   const parsedHeight = extractChartHeight(chartHtml);
   const baseHeight = parsedHeight ?? DEFAULT_HEIGHT;
+  const isPie = isPieChart(chartHtml ?? '');
+  const minH = isPie ? PIE_MIN_HEIGHT : MIN_HEIGHT;
+  const maxH = isPie ? PIE_MAX_HEIGHT : MAX_HEIGHT;
 
   const [iframeHeight, setIframeHeight] = useState(() =>
-    Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, baseHeight))
+    Math.max(minH, Math.min(maxH, baseHeight))
   );
 
   useEffect(() => {
@@ -34,24 +39,24 @@ export function EChartsBlock({ chartHtml }: { chartHtml: string }) {
         return;
       }
       if (e.data?.type !== 'hb-echarts-height' || typeof e.data?.height !== 'number') return;
-      const h = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, e.data.height));
+      const h = Math.max(minH, Math.min(maxH, e.data.height));
       setIframeHeight((prev) => (h > prev ? h : prev));
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, [chartHtml]);
+  }, [chartHtml, minH, maxH]);
 
   useEffect(() => {
-    setIframeHeight(Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, baseHeight)));
-  }, [baseHeight, chartHtml]);
+    setIframeHeight(Math.max(minH, Math.min(maxH, baseHeight)));
+  }, [baseHeight, chartHtml, minH, maxH]);
 
   const fullDoc = useMemo(
-    () => buildChartDocument(chartHtml, iframeHeight),
-    [chartHtml, iframeHeight]
+    () => buildChartDocument(chartHtml, iframeHeight, isPie),
+    [chartHtml, iframeHeight, isPie]
   );
 
   return (
-    <div ref={containerRef} className="echarts-chart-wrapper" style={{ width: '100%', minHeight: MIN_HEIGHT }}>
+    <div ref={containerRef} className="echarts-chart-wrapper" style={{ width: '100%', minHeight: minH }}>
       <iframe
         ref={iframeRef}
         title="ECharts visualization"
@@ -138,13 +143,24 @@ const EXPORT_CHART_SCRIPT = `
 })();
 `;
 
-function buildChartDocument(chartHtml: string, containerHeight: number): string {
+const BOTTOM_PADDING_PX = 160;
+const PIE_BOTTOM_PADDING_PX = 80;
+const LEFT_PADDING_PX = 0;
+
+function buildChartDocument(chartHtml: string, containerHeight: number, isPie?: boolean): string {
   const minWidth = Math.max(DEFAULT_MIN_WIDTH, extractChartWidth(chartHtml) ?? 0);
   const fixedHeight = containerHeight;
+  const bottomPad = isPie ? PIE_BOTTOM_PADDING_PX : BOTTOM_PADDING_PX;
   const chartOnly = '[id^="chart-"]:not([id*="-wrap"]):not([id*="-hint"])';
   const heightOverride = `${chartOnly}{height:${fixedHeight}px!important;max-height:${fixedHeight}px!important}`;
   const wrapFix = '[id^="chart-"][id$="-wrap"]{height:' + fixedHeight + 'px!important;max-height:' + fixedHeight + 'px!important}';
-  const safeStyles = `${heightOverride}${wrapFix}body{margin:0;padding:0;overflow-x:auto;overflow-y:hidden;min-width:${minWidth}px;height:${fixedHeight}px}${chartOnly}{min-width:${minWidth}px!important;width:100%!important}`;
+  const totalHeight = fixedHeight + bottomPad;
+  const totalMinWidth = minWidth + LEFT_PADDING_PX;
+  const safeStyles =
+    `${heightOverride}${wrapFix}` +
+    `body{margin:0;padding:0;padding-left:${LEFT_PADDING_PX}px;padding-bottom:${bottomPad}px;overflow-x:auto;overflow-y:auto;min-width:${totalMinWidth}px;min-height:${totalHeight}px;height:auto}` +
+    `${chartOnly}{min-width:${minWidth}px!important;width:100%!important;overflow:visible!important}` +
+    `[id^="chart-"][id$="-wrap"]{overflow:visible!important}`;
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${safeStyles}</style></head><body style="margin:0;padding:0"><script>${IFRAME_ERROR_HANDLER_SCRIPT}</script>${chartHtml}<script>${HEIGHT_REPORT_SCRIPT}</script><script>${EXPORT_CHART_SCRIPT}</script></body></html>`;
 }

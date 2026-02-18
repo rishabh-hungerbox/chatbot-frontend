@@ -502,6 +502,23 @@ export function OptionTickSvgIcon({ className }: { className?: string }) {
   );
 }
 
+/** Stop icon - square for cancelling ongoing request */
+export function StopSvgIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ color: 'inherit' }}
+    >
+      <rect x="4" y="4" width="12" height="12" rx="2" fill="currentColor" />
+    </svg>
+  );
+}
+
 /** Send arrow icon from send_arrow.svg - inherits color (gray when disabled via button) */
 export function SendArrowSvgIcon({ className }: { className?: string }) {
   const clipId = useId();

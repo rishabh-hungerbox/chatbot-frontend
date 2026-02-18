@@ -9,6 +9,7 @@ import { ChatbotApiClient, buildDefaultGreeting } from './api/chatbotApi';
 import { copyToClipboard } from './utils/clipboard';
 import { extractPlainText, extractPlainTextForCopy } from './utils/plainText';
 import { hasEchartsContent } from './utils/echartsParser';
+import { hasImageContent, extractImageUrlsFromHtml } from './utils/imageUtils';
 import { track } from './utils/analytics';
 import { Modal } from './ui/modals';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
@@ -32,12 +33,14 @@ import {
   OptionTickSvgIcon,
   RedCrossCloseSvgIcon,
   SendArrowSvgIcon,
+  StopSvgIcon,
   ThumbsDownSvgIcon,
   ThumbsUpSvgIcon,
   NewIcon,
   UploadImageSvgIcon,
 } from './ui/icons';
 import Lottie from 'lottie-react';
+import confetti from 'canvas-confetti';
 import aiIconAnimation from './ui/ai_icon.json';
 import messageLoadingAnimation from './ui/messge_loading.json';
 
@@ -47,6 +50,35 @@ function generateUniqueSessionId(): string {
     return crypto.randomUUID();
   }
   return uuidv4();
+}
+
+/** Fires confetti across the entire page for thumbs up celebration. */
+function fireConfetti() {
+  const duration = 1000;
+  const end = Date.now() + duration;
+
+  const frame = () => {
+    confetti({
+      particleCount: 4,
+      angle: 60,
+      spread: 55,
+      origin: { x: 0 },
+      colors: ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899'],
+    });
+    confetti({
+      particleCount: 4,
+      angle: 120,
+      spread: 55,
+      origin: { x: 1 },
+      colors: ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899'],
+    });
+
+    if (Date.now() < end) {
+      requestAnimationFrame(frame);
+    }
+  };
+
+  frame();
 }
 
 const LOADING_MESSAGES = [
@@ -116,6 +148,9 @@ export function ChatbotApp() {
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const { showToast } = useToast();
 
   const [metaOpen, setMetaOpen] = useState(false);
   const [metaForMessage, setMetaForMessage] = useState<ChatMessage | null>(null);
@@ -273,6 +308,10 @@ export function ChatbotApp() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const startNewChat = useCallback(() => {
+    if (isLoading) {
+      showToast('Please wait for the request to complete or cancel it.');
+      return;
+    }
     track('new_chat_icon_click', { source: 'webview', timestamp: new Date().toISOString() });
     setTokenLimitReached(false);
     setIsLoading(false);
@@ -282,7 +321,7 @@ export function ChatbotApp() {
     setSelectedOptions({});
     const newId = generateUniqueSessionId();
     setCurrentSessionId(newId);
-  }, []);
+  }, [isLoading, showToast]);
 
   // Click outside to close history item options dropdown or cancel rename
   useEffect(() => {
@@ -421,6 +460,8 @@ export function ChatbotApp() {
     removeFile();
 
     setIsLoading(true);
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     const start = performance.now();
     try {
       const response = await api.sendMessage({
@@ -428,6 +469,7 @@ export function ChatbotApp() {
         query: userText || (fileName ? `[Image: ${fileName}]` : ''),
         model_name: selectedModel,
         file: fileToSend,
+        signal: controller.signal,
       });
 
       const elapsedSeconds = Math.max(0, Math.round((performance.now() - start) / 1000));
@@ -477,6 +519,9 @@ export function ChatbotApp() {
         chat_content: extractPlainText(assistantChat.content || ''),
       });
     } catch (e: any) {
+      if (e?.name === 'AbortError') {
+        return;
+      }
       const elapsedSeconds = Math.max(0, Math.round((performance.now() - start) / 1000));
       const errorContent =
         elapsedSeconds >= 180
@@ -484,6 +529,7 @@ export function ChatbotApp() {
           : "I'm sorry, but I'm experiencing some technical difficulties. Please try again later.";
       setMessages((prev) => [...prev, { role: 'assistant', content: errorContent, timeTakenSeconds: elapsedSeconds }]);
     } finally {
+      abortControllerRef.current = null;
       setIsLoading(false);
     }
   }, [
@@ -499,9 +545,16 @@ export function ChatbotApp() {
     userMessage,
   ]);
 
+  const onStopRequest = useCallback(() => {
+    abortControllerRef.current?.abort();
+  }, []);
+
   const onSelectHistorySession = useCallback(
     async (s: SessionSummary) => {
-      if (isLoading) return;
+      if (isLoading) {
+        showToast('Please wait for the request to complete or cancel it.');
+        return;
+      }
       const sid = (s as any)?.session_id || (s as any)?.id;
       if (!sid) return;
       if (sid === currentSessionId) return;
@@ -572,7 +625,7 @@ export function ChatbotApp() {
         // ignore
       }
     },
-    [api, currentSessionId, isLoading]
+    [api, currentSessionId, isLoading, showToast]
   );
 
   const isLatestOptionsMessage = useCallback(
@@ -650,6 +703,10 @@ export function ChatbotApp() {
           prev.map((x) => (x === m ? { ...x, good_response: goodResponse } : x))
         );
         track('thumbs_up_click', { source: 'webview', response_id: m.response_id });
+
+        if (goodResponse === true) {
+          fireConfetti();
+        }
       } catch {
         // ignore
       }
@@ -707,8 +764,6 @@ export function ChatbotApp() {
     }
   }, [cfg.parentOrigin]);
 
-  const { showToast } = useToast();
-
   const onTranscript = useCallback((text: string) => {
     setUserMessage(text);
   }, []);
@@ -763,6 +818,55 @@ export function ChatbotApp() {
       };
       window.addEventListener('message', handler);
       iframe.contentWindow.postMessage({ type: 'hb-echarts-export' }, '*');
+    },
+    [showToast]
+  );
+
+  const onDownloadImage = useCallback(
+    async (content: string) => {
+      const urls = extractImageUrlsFromHtml(content || '');
+      if (urls.length === 0) {
+        showToast('No image to download');
+        return;
+      }
+      const downloadOne = async (rawUrl: string, index: number): Promise<boolean> => {
+        const url = rawUrl.startsWith('data:') ? rawUrl : new URL(rawUrl, window.location.origin).href;
+        if (rawUrl.startsWith('data:')) {
+          try {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `image-${index + 1}.png`;
+            a.click();
+            return true;
+          } catch {
+            return false;
+          }
+        }
+        try {
+          const res = await fetch(url, { mode: 'cors' });
+          if (!res.ok) throw new Error('Fetch failed');
+          const blob = await res.blob();
+          const ext = (blob.type?.split('/')[1] || 'png').replace(/^jpeg$/, 'jpg');
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = `image-${index + 1}.${ext}`;
+          a.click();
+          URL.revokeObjectURL(a.href);
+          return true;
+        } catch {
+          window.open(url, '_blank', 'noopener,noreferrer');
+          return false;
+        }
+      };
+      let ok = 0;
+      for (let i = 0; i < urls.length; i++) {
+        if (await downloadOne(urls[i], i)) ok++;
+      }
+      if (ok > 0) {
+        showToast(ok > 1 ? 'Images downloaded' : 'Image downloaded');
+      } else if (urls.length > 0) {
+        showToast('Image opened in new tab');
+      }
     },
     [showToast]
   );
@@ -935,7 +1039,7 @@ export function ChatbotApp() {
             <button
               className="header-btn-pill"
               onClick={startNewChat}
-              disabled={!hasAssistantRespondedInSession || isLoading}
+              disabled={!hasAssistantRespondedInSession}
               aria-label="New"
               title="New chat"
               type="button"
@@ -1076,6 +1180,18 @@ export function ChatbotApp() {
                                 <span className="download-chart-btn-text">Download Chart</span>
                               </button>
                             ) : null}
+                            {hasImageContent(m.content || '') ? (
+                              <button
+                                type="button"
+                                className="download-chart-btn"
+                                onClick={() => onDownloadImage(m.content || '')}
+                                aria-label="Download Image"
+                                title="Download Image"
+                              >
+                                <DownloadChartSvgIcon />
+                                <span className="download-chart-btn-text">Download Image</span>
+                              </button>
+                            ) : null}
                             {m.timeTakenSeconds !== undefined ? (
                               <span className="time-taken">(Time Taken: {m.timeTakenSeconds} sec)</span>
                             ) : null}
@@ -1105,16 +1221,24 @@ export function ChatbotApp() {
                   ) : (
                     <>
                       <div className="message-content">{m.content}</div>
-                      {(m.sentImageUrls || []).map((url) => (
-                        <div key={url} className="user-image-preview" onClick={() => setImagePreviewUrl(url)}>
-                          {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                          <img src={url} />
-                        </div>
-                      ))}
-                      {m.sentImageUrl ? (
-                        <div className="user-image-preview" onClick={() => setImagePreviewUrl(m.sentImageUrl!)}>
-                          {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                          <img src={m.sentImageUrl} />
+                      {(m.sentImageUrls?.length || m.sentImageUrl) ? (
+                        <div className="user-images-container">
+                          {(m.sentImageUrls || []).map((url) => (
+                            <div key={url} className="user-image-preview" onClick={() => setImagePreviewUrl(url)}>
+                              {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                              <img src={url} alt="" />
+                            </div>
+                          ))}
+                          {m.sentImageUrl ? (
+                            <div
+                              key={m.sentImageUrl}
+                              className="user-image-preview"
+                              onClick={() => setImagePreviewUrl(m.sentImageUrl!)}
+                            >
+                              {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                              <img src={m.sentImageUrl} alt="" />
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                     </>
@@ -1227,16 +1351,28 @@ export function ChatbotApp() {
                   >
                     <MicrophoneSvgIcon />
                   </button>
-                  <button
-                    className="send-btn send-btn-inline input-icon-btn"
-                    onClick={() => onSend()}
-                    disabled={(!userMessage.trim() && !selectedFile) || tokenLimitReached || isLoading}
-                    aria-label="Send message"
-                    title="Send message"
-                    type="button"
-                  >
-                    <SendArrowSvgIcon />
-                  </button>
+                  {isLoading ? (
+                    <button
+                      className="stop-btn send-btn-inline input-icon-btn"
+                      onClick={onStopRequest}
+                      aria-label="Stop request"
+                      title="Stop request"
+                      type="button"
+                    >
+                      <StopSvgIcon />
+                    </button>
+                  ) : (
+                    <button
+                      className="send-btn send-btn-inline input-icon-btn"
+                      onClick={() => onSend()}
+                      disabled={(!userMessage.trim() && !selectedFile) || tokenLimitReached}
+                      aria-label="Send message"
+                      title="Send message"
+                      type="button"
+                    >
+                      <SendArrowSvgIcon />
+                    </button>
+                  )}
                 </div>
               </div>
               <input

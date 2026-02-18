@@ -397,6 +397,36 @@
   align-items: flex-end;
 }
 
+/* Container for user-sent images: spacing below message, gap between images */
+.user-images-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* User-sent image preview: medium-sized box */
+.user-image-preview {
+  max-width: 200px;
+  max-height: 200px;
+  min-width: 80px;
+  min-height: 80px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--chat-border, #ede7fa);
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(92, 37, 157, 0.08);
+}
+.user-image-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  vertical-align: middle;
+}
+
 .message-content {
   max-width: 85%;
   padding: 12px 14px;
@@ -998,6 +1028,7 @@
 }
 
 .send-btn,
+.stop-btn,
 .attach-btn,
 .voice-btn,
 .upload-image-btn {
@@ -1029,12 +1060,14 @@
   color: #c4c4c4;
 }
 
-.send-btn:not([disabled]) {
+.send-btn:not([disabled]),
+.stop-btn {
   background-color: transparent;
   color: var(--chat-primary);
   box-shadow: none;
 }
-.send-btn:not([disabled]):hover {
+.send-btn:not([disabled]):hover,
+.stop-btn:hover {
   background-color: transparent;
   color: var(--chat-primary-light);
 }
@@ -1552,6 +1585,65 @@
   height: 44px;
 }
 
+/* Modal mobile: full-width, better padding, smaller close icon */
+@media (max-width: 768px) {
+  .hb-modal-overlay {
+    padding: 8px;
+    align-items: flex-start;
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    padding-left: max(8px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
+  }
+  .hb-modal {
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+    width: 100%;
+    border-radius: 12px;
+  }
+  .hb-modal-header {
+    padding: 10px 12px;
+    gap: 6px;
+    position: relative;
+  }
+  .hb-modal-header-top {
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+  .hb-modal-header-left {
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 8px;
+    padding-right: 40px; /* space for fixed close button */
+  }
+  .hb-modal-title {
+    font-size: 14px;
+    line-height: 1.3;
+    word-break: break-word;
+  }
+  .hb-modal-body {
+    padding: 10px 12px;
+    max-height: calc(100vh - 120px);
+  }
+  /* Close button: fixed top-right, smaller on mobile */
+  .hb-modal-has-close-icon .hb-modal-header-top {
+    position: relative;
+  }
+  .hb-modal-has-close-icon .hb-modal-header-top .hb-icon-btn {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+  .hb-modal-has-close-icon .hb-modal-header-top .hb-icon-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
 /* Hide web-specific header buttons on mobile */
 .header-btn-icon {
   display: inline-flex;
@@ -1750,6 +1842,7 @@
   }
   .input-actions .voice-btn,
   .input-actions .send-btn,
+  .input-actions .stop-btn,
   .input-actions .upload-image-btn {
     width: 24px;
     height: 24px;
@@ -1757,6 +1850,7 @@
   }
   .input-actions .voice-btn svg,
   .input-actions .send-btn svg,
+  .input-actions .stop-btn svg,
   .input-actions .upload-image-btn svg {
     width: 20px;
     height: 20px;

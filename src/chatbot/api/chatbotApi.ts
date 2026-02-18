@@ -52,6 +52,7 @@ export class ChatbotApiClient {
     query: string;
     model_name?: string | null;
     file?: File | null;
+    signal?: AbortSignal;
   }): Promise<any> {
     const url = joinUrl(
       this.apiBaseUrl,
@@ -69,6 +70,7 @@ export class ChatbotApiClient {
       headers: this.headers(),
       body: form,
       credentials: "include",
+      signal: params.signal,
     });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
