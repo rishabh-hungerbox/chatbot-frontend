@@ -42,7 +42,7 @@ export class ChatbotApiClient {
    * - GET  /v3/dashboard_management/ai-admin-agent/history/:id
    * - POST /v3/dashboard_management/ai-admin-agent/history/:id/rename
    * - DELETE /v3/dashboard_management/ai-admin-agent/history/:id
-   * - POST /v3/dashboard_management/ai-admin-agent/feedback
+   * - POST /v3/dashboard_management/ai-admin-agent/feedback/:id
    *
    * If your backend differs, update these paths in one place.
    */
@@ -55,14 +55,14 @@ export class ChatbotApiClient {
   }): Promise<any> {
     const url = joinUrl(
       this.apiBaseUrl,
-      "v3/dashboard_management/ai-admin-agent"
+      "v3/dashboard_management/ai-admin-agent",
     );
     const form = new FormData();
     form.append("session_id", params.session_id);
     form.append("query", params.query);
     form.append("html_response", "true");
     if (params.model_name) form.append("model_name", params.model_name);
-    if (params.file) form.append("file", params.file);
+    if (params.file) form.append("image", params.file);
 
     const res = await fetch(url, {
       method: "POST",
@@ -80,7 +80,7 @@ export class ChatbotApiClient {
   async getSessionHistory(): Promise<SessionHistoryListResponse> {
     const url = joinUrl(
       this.apiBaseUrl,
-      "v3/dashboard_management/ai-admin-agent/history"
+      "v3/dashboard_management/ai-admin-agent/history",
     );
     const res = await fetch(url, {
       method: "GET",
@@ -95,8 +95,8 @@ export class ChatbotApiClient {
     const url = joinUrl(
       this.apiBaseUrl,
       `v3/dashboard_management/ai-admin-agent/history/${encodeURIComponent(
-        sessionId
-      )}`
+        sessionId,
+      )}`,
     );
     const res = await fetch(url, {
       method: "GET",
@@ -111,11 +111,11 @@ export class ChatbotApiClient {
     const url = joinUrl(
       this.apiBaseUrl,
       `v3/dashboard_management/ai-admin-agent/history/${encodeURIComponent(
-        sessionId
-      )}/rename`
+        sessionId,
+      )}`,
     );
     const res = await fetch(url, {
-      method: "POST",
+      method: "PUT",
       headers: this.headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({ title }),
       credentials: "include",
@@ -127,8 +127,8 @@ export class ChatbotApiClient {
     const url = joinUrl(
       this.apiBaseUrl,
       `v3/dashboard_management/ai-admin-agent/history/${encodeURIComponent(
-        sessionId
-      )}`
+        sessionId,
+      )}`,
     );
     const res = await fetch(url, {
       method: "DELETE",
@@ -138,19 +138,18 @@ export class ChatbotApiClient {
     if (!res.ok) throw new Error(`deleteSessionHistory failed: ${res.status}`);
   }
 
-  async sendFeedback(params: {
-    response_id: string;
-    good_response: boolean;
-    feedback_text?: string | null;
-  }): Promise<void> {
+  async sendFeedback(
+    responseId: string,
+    body: { good_response: boolean | null; feedback?: string | null },
+  ): Promise<void> {
     const url = joinUrl(
       this.apiBaseUrl,
-      "v3/dashboard_management/ai-admin-agent/feedback"
+      `v3/dashboard_management/ai-admin-agent/feedback/${encodeURIComponent(responseId)}`,
     );
     const res = await fetch(url, {
       method: "POST",
       headers: this.headers({ "Content-Type": "application/json" }),
-      body: JSON.stringify(params),
+      body: JSON.stringify(body),
       credentials: "include",
     });
     if (!res.ok) throw new Error(`sendFeedback failed: ${res.status}`);
@@ -161,8 +160,8 @@ export class ChatbotApiClient {
     const url = joinUrl(
       this.apiBaseUrl,
       `v3/dashboard_management/ai-admin-agent/users/search?q=${encodeURIComponent(
-        query
-      )}`
+        query,
+      )}`,
     );
     const res = await fetch(url, {
       method: "GET",
@@ -177,8 +176,8 @@ export class ChatbotApiClient {
     const url = joinUrl(
       this.apiBaseUrl,
       `v3/dashboard_management/ai-admin-agent/users/${encodeURIComponent(
-        String(userId)
-      )}/history`
+        String(userId),
+      )}/history`,
     );
     const res = await fetch(url, {
       method: "GET",
@@ -192,13 +191,13 @@ export class ChatbotApiClient {
 
   async getSessionHistoryByIdForUser(
     userId: number,
-    sessionId: string
+    sessionId: string,
   ): Promise<any> {
     const url = joinUrl(
       this.apiBaseUrl,
       `v3/dashboard_management/ai-admin-agent/users/${encodeURIComponent(
-        String(userId)
-      )}/history/${encodeURIComponent(sessionId)}`
+        String(userId),
+      )}/history/${encodeURIComponent(sessionId)}`,
     );
     const res = await fetch(url, {
       method: "GET",

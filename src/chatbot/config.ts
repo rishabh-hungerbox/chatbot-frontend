@@ -12,6 +12,8 @@ export type ChatbotRuntimeConfig = {
   initialSessionId?: string;
   allowClose?: boolean;
   parentOrigin?: string; // if set, we postMessage only to this origin
+  /** When true, show centered empty state (Ready when you are.) - for standalone web view */
+  centeredEmptyState?: boolean;
 };
 
 export function getRuntimeConfig(): ChatbotRuntimeConfig {
@@ -53,6 +55,13 @@ export function getRuntimeConfig(): ChatbotRuntimeConfig {
   const allowClose =
     (qs.get("allowClose") || "").toLowerCase() === "true" ? true : undefined;
 
+  const centeredEmptyState =
+    qs.get("centeredEmptyState") === "true"
+      ? true
+      : qs.get("centeredEmptyState") === "false"
+        ? false
+        : typeof window !== "undefined" && (window as any).self === (window as any).top;
+
   const parentOrigin = qs.get("parentOrigin")
     ? safeUrlDecode(qs.get("parentOrigin") as string)
     : defaultParentOrigin;
@@ -63,5 +72,6 @@ export function getRuntimeConfig(): ChatbotRuntimeConfig {
     initialSessionId,
     allowClose,
     parentOrigin,
+    centeredEmptyState,
   };
 }

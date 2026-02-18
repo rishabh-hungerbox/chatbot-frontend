@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import DOMPurify from 'dompurify';
 import { v4 as uuidv4 } from 'uuid';
 import clsx from 'clsx';
 
@@ -7,20 +6,36 @@ import './chatbot.css';
 import type { ChatMessage, SessionSummary } from './types';
 import { getRuntimeConfig } from './config';
 import { ChatbotApiClient, buildDefaultGreeting } from './api/chatbotApi';
-import { extractPlainText } from './utils/plainText';
+import { copyToClipboard } from './utils/clipboard';
+import { extractPlainText, extractPlainTextForCopy } from './utils/plainText';
+import { hasEchartsContent } from './utils/echartsParser';
 import { track } from './utils/analytics';
 import { Modal } from './ui/modals';
+import { useSpeechRecognition } from './hooks/useSpeechRecognition';
+import { useToast } from './ui/Toast';
+import {
+  ExecutionDetailsBadges,
+  ExecutionDetailsContent,
+  ExecutionDetailsDisclaimer,
+  hasVisibleExecutionDetails,
+} from './ui/ExecutionDetailsModal';
+import { FeedbackSuggestionsBox } from './ui/FeedbackSuggestionsBox';
+import { AssistantMessageContent } from './ui/AssistantMessageContent';
 import {
   BackButtonSvgIcon,
   CopySvgIcon,
+  DownloadChartSvgIcon,
   HistorySvgIcon,
   InfoSvgIcon,
+  LongBackAeroSvgIcon,
   MicrophoneSvgIcon,
+  OptionTickSvgIcon,
   RedCrossCloseSvgIcon,
   SendArrowSvgIcon,
   ThumbsDownSvgIcon,
   ThumbsUpSvgIcon,
   NewIcon,
+  UploadImageSvgIcon,
 } from './ui/icons';
 import Lottie from 'lottie-react';
 import aiIconAnimation from './ui/ai_icon.json';
@@ -67,14 +82,6 @@ function decodeMaybeBase64(value: any): string {
   }
 }
 
-function sanitizeHtml(html: string): string {
-  // Keep it permissive enough for tables/images but strip scripts.
-  return DOMPurify.sanitize(html || '', {
-    USE_PROFILES: { html: true },
-    FORBID_TAGS: ['script'],
-  });
-}
-
 export function ChatbotApp() {
   const cfg = useMemo(() => getRuntimeConfig(), []);
   const api = useMemo(() => new ChatbotApiClient({ apiBaseUrl: cfg.apiBaseUrl, authToken: cfg.authToken }), [cfg]);
@@ -90,7 +97,7 @@ export function ChatbotApp() {
 
   const [sessionHistory, setSessionHistory] = useState<SessionSummary[] | null>(null);
 
-  const [selectedModel, setSelectedModel] = useState<string | null>(() => {
+  const [selectedModel] = useState<string | null>(() => {
     try {
       return localStorage.getItem('hb-admin-chatbot-model');
     } catch {
@@ -115,9 +122,48 @@ export function ChatbotApp() {
 
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
 
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const [feedbackText, setFeedbackText] = useState('');
-  const [feedbackForMessage, setFeedbackForMessage] = useState<ChatMessage | null>(null);
+  const [feedbackSuggestionsForResponseId, setFeedbackSuggestionsForResponseId] = useState<string | null>(null);
+  const [feedbackSuggestionsRequestClose, setFeedbackSuggestionsRequestClose] = useState(false);
+
+  const DEFAULT_GREETING_CONTENT = buildDefaultGreeting().content;
+  const isEmptyState =
+    !!cfg.centeredEmptyState &&
+    !isLoading &&
+    messages.length === 1 &&
+    messages[0]?.role === 'assistant' &&
+    (messages[0]?.content || '').trim() === DEFAULT_GREETING_CONTENT;
+
+  const [justLeftEmptyState, setJustLeftEmptyState] = useState(false);
+  const prevEmptyStateRef = useRef(isEmptyState);
+  useEffect(() => {
+    if (prevEmptyStateRef.current && !isEmptyState) {
+      setJustLeftEmptyState(true);
+      const t = setTimeout(() => setJustLeftEmptyState(false), 450);
+      return () => clearTimeout(t);
+    }
+    prevEmptyStateRef.current = isEmptyState;
+  }, [isEmptyState]);
+
+  const [openHistoryMenuSessionId, setOpenHistoryMenuSessionId] = useState<string | null>(null);
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
+  const [renamingTitleValue, setRenamingTitleValue] = useState('');
+  const historyMenuRef = useRef<HTMLDivElement | null>(null);
+  const historyRenameRef = useRef<HTMLDivElement | null>(null);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const handler = () => setIsMobile(mq.matches);
+    handler();
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  // When resizing to mobile, auto-collapse history so sidebar doesn't overlay
+  useEffect(() => {
+    if (isMobile) setIsHistoryOpen(false);
+  }, [isMobile]);
 
   // iframe friendliness: tell parent ready + height changes (optional)
   useEffect(() => {
@@ -154,7 +200,8 @@ export function ChatbotApp() {
     if (!el) return;
     el.style.height = '0';
     const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 18;
-    const minH = 2 * lineHeight;
+    const minLines = window.matchMedia('(max-width: 768px)').matches ? 1 : 2;
+    const minH = minLines * lineHeight;
     const maxH = 8 * lineHeight;
     const h = Math.min(Math.max(el.scrollHeight, minH), maxH);
     el.style.height = `${h}px`;
@@ -163,6 +210,11 @@ export function ChatbotApp() {
   useEffect(() => {
     adjustMessageInputHeight();
   }, [userMessage, adjustMessageInputHeight]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    adjustMessageInputHeight();
+  }, [isMobile, adjustMessageInputHeight]);
 
   useEffect(() => {
     if (!isLoading) return;
@@ -194,8 +246,13 @@ export function ChatbotApp() {
     }
   }, []);
 
+  const prevMessagesLengthRef = useRef(0);
   useEffect(() => {
-    scrollToBottom();
+    const prevLen = prevMessagesLengthRef.current;
+    prevMessagesLengthRef.current = messages.length;
+    if (messages.length > prevLen) {
+      scrollToBottom();
+    }
   }, [messages, scrollToBottom]);
 
   const fetchSessionHistory = useCallback(async () => {
@@ -213,7 +270,7 @@ export function ChatbotApp() {
     fetchSessionHistory();
   }, [fetchSessionHistory]);
 
-  const [isHistoryOpen, setIsHistoryOpen] = useState(true);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const startNewChat = useCallback(() => {
     track('new_chat_icon_click', { source: 'webview', timestamp: new Date().toISOString() });
@@ -222,13 +279,88 @@ export function ChatbotApp() {
     setSelectedFile(null);
     setSelectedFilePreviewUrl(null);
     setMessages([buildDefaultGreeting()]);
+    setSelectedOptions({});
     const newId = generateUniqueSessionId();
     setCurrentSessionId(newId);
   }, []);
 
+  // Click outside to close history item options dropdown or cancel rename
+  useEffect(() => {
+    if (!openHistoryMenuSessionId && !renamingSessionId) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (openHistoryMenuSessionId && historyMenuRef.current && !historyMenuRef.current.contains(target)) {
+        setOpenHistoryMenuSessionId(null);
+      }
+      if (renamingSessionId && historyRenameRef.current && !historyRenameRef.current.contains(target)) {
+        setRenamingSessionId(null);
+        setRenamingTitleValue('');
+      }
+    };
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [openHistoryMenuSessionId, renamingSessionId]);
+
+  // Focus rename input when entering rename mode
+  useEffect(() => {
+    if (renamingSessionId && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [renamingSessionId]);
+
+  const startRename = useCallback((sessionId: string, currentTitle: string) => {
+    setOpenHistoryMenuSessionId(null);
+    setRenamingSessionId(sessionId);
+    setRenamingTitleValue(currentTitle || '');
+  }, []);
+
+  const cancelRename = useCallback(() => {
+    setRenamingSessionId(null);
+    setRenamingTitleValue('');
+  }, []);
+
+  const submitRename = useCallback(
+    async (sessionId: string) => {
+      const newTitle = renamingTitleValue.trim();
+      const session = (sessionHistory || []).find(
+        (s) => String((s as any)?.session_id || (s as any)?.id) === sessionId
+      );
+      const currentTitle = ((session as any)?.title || 'Previous Chat')?.trim() || '';
+      if (!newTitle || newTitle === currentTitle) {
+        cancelRename();
+        return;
+      }
+      try {
+        await api.renameSessionHistory(sessionId, newTitle);
+        cancelRename();
+        fetchSessionHistory();
+      } catch {
+        cancelRename();
+      }
+    },
+    [api, cancelRename, fetchSessionHistory, renamingTitleValue, sessionHistory]
+  );
+
+  const onHistoryDelete = useCallback(
+    async (sessionId: string) => {
+      try {
+        await api.deleteSessionHistory(sessionId);
+        setOpenHistoryMenuSessionId(null);
+        if (sessionId === currentSessionId) startNewChat();
+        fetchSessionHistory();
+      } catch {
+        // ignore
+      }
+    },
+    [api, currentSessionId, fetchSessionHistory, startNewChat]
+  );
+
   const onFileSelected = useCallback((file: File | null) => {
     if (!file) return;
-    if (!file.type.startsWith('image/')) return;
+    const ext = file.name.toLowerCase().split('.').pop();
+    const allowed = ['png', 'jpeg', 'jpg'];
+    if (!allowed.includes(ext || '')) return;
     try {
       if (selectedFilePreviewUrl) URL.revokeObjectURL(selectedFilePreviewUrl);
     } catch {
@@ -402,7 +534,11 @@ export function ChatbotApp() {
             rebuilt.push({
               role: 'assistant',
               content: assistantHtml,
-              meta_data: Array.isArray((item as any)?.meta_data) ? (item as any).meta_data : undefined,
+              meta_data: Array.isArray((item as any)?.meta_data)
+                ? (item as any).meta_data
+                : Array.isArray((item as any)?.function_steps)
+                  ? (item as any).function_steps
+                  : undefined,
               timeTakenSeconds:
                 typeof (item as any)?.time_taken_seconds === 'number'
                   ? (item as any).time_taken_seconds
@@ -429,6 +565,7 @@ export function ChatbotApp() {
         }
 
         setMessages(rebuilt);
+        setSelectedOptions({});
         setTokenLimitReached(!!(res as any)?.token_limit_reached);
         setHasAssistantRespondedInSession(true);
       } catch {
@@ -454,23 +591,29 @@ export function ChatbotApp() {
     [messages]
   );
 
-  const [selectedOptions, setSelectedOptions] = useState<Record<number, Record<string, string>>>({});
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, Record<string, string>>>({});
+
+  const getOptionsKey = useCallback((m: ChatMessage, idx: number) => {
+    return (m as any)?.response_id ?? `msg-${idx}`;
+  }, []);
 
   const onOptionSelect = useCallback(
     (messageIndex: number, question: string, key: string) => {
-      if (!isLatestOptionsMessage(messageIndex)) return;
+      const msg = messages[messageIndex];
+      if (!msg || !isLatestOptionsMessage(messageIndex)) return;
+      const optionsKey = getOptionsKey(msg, messageIndex);
       setSelectedOptions((prev) => {
-        const cur = { ...(prev[messageIndex] || {}) };
+        const cur = { ...(prev[optionsKey] || {}) };
         cur[question] = key;
-        return { ...prev, [messageIndex]: cur };
+        return { ...prev, [optionsKey]: cur };
       });
 
       // auto-submit if all selected (only consider questions that have choices)
-      const opts = (messages[messageIndex] as any)?.options || {};
+      const opts = (msg as any)?.options || {};
       const questions = Object.keys(opts).filter(
         (q) => Array.isArray(opts[q]) && (opts[q]?.length ?? 0) > 0
       );
-      const nextSel = { ...(selectedOptions[messageIndex] || {}), [question]: key };
+      const nextSel = { ...(selectedOptions[optionsKey] || {}), [question]: key };
       const allSelected = questions.length > 0 && questions.every((q) => !!nextSel[q]);
       if (allSelected) {
         const parts: string[] = [];
@@ -487,7 +630,7 @@ export function ChatbotApp() {
         }
       }
     },
-    [isLatestOptionsMessage, messages, onSend, selectedOptions]
+    [getOptionsKey, isLatestOptionsMessage, messages, onSend, selectedOptions]
   );
 
   const openMetaForMessage = useCallback((m: ChatMessage) => {
@@ -498,10 +641,13 @@ export function ChatbotApp() {
   const onThumbsUp = useCallback(
     async (m: ChatMessage) => {
       if (!m.response_id) return;
+      setFeedbackSuggestionsForResponseId(null);
+      const isAlreadyLiked = m.good_response === true;
+      const goodResponse = isAlreadyLiked ? null : true;
       try {
-        await api.sendFeedback({ response_id: m.response_id, good_response: true, feedback_text: null });
+        await api.sendFeedback(m.response_id, { good_response: goodResponse, feedback: null });
         setMessages((prev) =>
-          prev.map((x) => (x === m ? { ...x, good_response: true } : x))
+          prev.map((x) => (x === m ? { ...x, good_response: goodResponse } : x))
         );
         track('thumbs_up_click', { source: 'webview', response_id: m.response_id });
       } catch {
@@ -511,31 +657,46 @@ export function ChatbotApp() {
     [api]
   );
 
-  const onThumbsDown = useCallback((m: ChatMessage) => {
-    if (!m.response_id) return;
-    setFeedbackForMessage(m);
-    setFeedbackText('');
-    setFeedbackOpen(true);
-    track('thumbs_down_click', { source: 'webview', response_id: m.response_id });
-  }, []);
+  const onThumbsDown = useCallback(
+    async (m: ChatMessage) => {
+      if (!m.response_id) return;
+      const isAlreadyDisliked = m.good_response === false;
+      if (isAlreadyDisliked) {
+        if (feedbackSuggestionsForResponseId === m.response_id) {
+          setFeedbackSuggestionsRequestClose(true);
+        } else {
+          setFeedbackSuggestionsForResponseId(null);
+        }
+        try {
+          await api.sendFeedback(m.response_id, { good_response: null, feedback: null });
+          setMessages((prev) =>
+            prev.map((x) => (x === m ? { ...x, good_response: null } : x))
+          );
+        } catch {
+          // ignore
+        }
+      } else {
+        try {
+          await api.sendFeedback(m.response_id, { good_response: false, feedback: null });
+          setMessages((prev) => prev.map((x) => (x === m ? { ...x, good_response: false } : x)));
+        } catch {
+          // ignore
+        }
+        setFeedbackSuggestionsForResponseId(m.response_id);
+      }
+      track('thumbs_down_click', { source: 'webview', response_id: m.response_id });
+    },
+    [api, feedbackSuggestionsForResponseId]
+  );
 
-  const submitThumbsDownFeedback = useCallback(async () => {
-    const m = feedbackForMessage;
-    if (!m?.response_id) return;
-    try {
-      await api.sendFeedback({
-        response_id: m.response_id,
-        good_response: false,
-        feedback_text: feedbackText.trim() ? feedbackText.trim() : null,
-      });
-      setMessages((prev) => prev.map((x) => (x === m ? { ...x, good_response: false } : x)));
-    } catch {
-      // ignore
-    } finally {
-      setFeedbackOpen(false);
-      setFeedbackForMessage(null);
-    }
-  }, [api, feedbackForMessage, feedbackText]);
+  const onSendFeedbackFromSuggestions = useCallback(
+    async (feedback: string) => {
+      const responseId = feedbackSuggestionsForResponseId;
+      if (!responseId) return;
+      await api.sendFeedback(responseId, { good_response: false, feedback: feedback.trim() || null });
+    },
+    [api, feedbackSuggestionsForResponseId]
+  );
 
   const onClose = useCallback(() => {
     try {
@@ -546,14 +707,65 @@ export function ChatbotApp() {
     }
   }, [cfg.parentOrigin]);
 
-  const onCopyMessage = useCallback(async (content: string) => {
-    try {
-      const plain = extractPlainText(content || '');
-      await navigator.clipboard.writeText(plain);
-    } catch {
-      // ignore
-    }
+  const { showToast } = useToast();
+
+  const onTranscript = useCallback((text: string) => {
+    setUserMessage(text);
   }, []);
+
+  const onVoiceSilence = useCallback(
+    (transcript: string) => {
+      if (transcript.trim()) {
+        onSend(transcript);
+      }
+    },
+    [onSend]
+  );
+
+  const { isListening, isSupported, toggleListening } = useSpeechRecognition(onTranscript, onVoiceSilence);
+
+  const onCopyMessage = useCallback(
+    (content: string) => {
+      const plain = extractPlainTextForCopy(content || '');
+      copyToClipboard(plain).then(() => showToast('Text Copied!'));
+    },
+    [showToast]
+  );
+
+  const onDownloadChart = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      const frame = (e.currentTarget as HTMLElement).closest('.assistant-message-frame');
+      const wrapper = frame?.querySelector('.echarts-chart-wrapper');
+      const iframe = wrapper?.querySelector('iframe');
+      if (!iframe?.contentWindow) {
+        showToast('Chart not ready to download');
+        return;
+      }
+      const handler = (ev: MessageEvent) => {
+        if (ev.data?.type !== 'hb-echarts-export-result') return;
+        window.removeEventListener('message', handler);
+        if (ev.data?.error) {
+          showToast('Failed to export chart');
+          return;
+        }
+        const dataUrl = ev.data?.dataUrl;
+        if (dataUrl) {
+          try {
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = `chart-${Date.now()}.png`;
+            a.click();
+            showToast('Chart downloaded');
+          } catch {
+            showToast('Failed to save chart');
+          }
+        }
+      };
+      window.addEventListener('message', handler);
+      iframe.contentWindow.postMessage({ type: 'hb-echarts-export' }, '*');
+    },
+    [showToast]
+  );
 
   return (
     <div className="chatbot-root">
@@ -574,20 +786,90 @@ export function ChatbotApp() {
           <div className="history-list">
             {(sessionHistory || []).map((s) => {
               const sid = (s as any)?.session_id || (s as any)?.id;
+              const title = (s as any)?.title || 'Previous Chat';
+              const isMenuOpen = openHistoryMenuSessionId === String(sid);
               return (
                 <div
                   key={String(sid)}
-                  className={clsx('history-item', String(sid) === currentSessionId && 'active')}
-                  onClick={() => onSelectHistorySession(s)}
+                  ref={renamingSessionId === String(sid) ? historyRenameRef : null}
+                  className={clsx(
+                    'history-item',
+                    String(sid) === currentSessionId && 'active',
+                    renamingSessionId === String(sid) && 'is-renaming'
+                  )}
+                  onClick={() => {
+                    if (renamingSessionId !== String(sid)) onSelectHistorySession(s);
+                  }}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
+                    if (renamingSessionId === String(sid)) return;
                     if (e.key === 'Enter' || e.key === ' ') onSelectHistorySession(s);
                   }}
-                  title={(s as any)?.title || ''}
+                  title={title}
                 >
-                  <div className="history-summary">{(s as any)?.title || 'Previous Chat'}</div>
-                  <div className="history-item-menu" aria-hidden="true" />
+                  <div className="history-summary-wrap">
+                    <div className={clsx('history-summary', renamingSessionId === String(sid) && 'hidden')}>
+                      {title}
+                    </div>
+                    {renamingSessionId === String(sid) ? (
+                      <div
+                        className="history-rename-overlay"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          ref={renameInputRef}
+                          type="text"
+                          className="history-rename-input"
+                          value={renamingTitleValue}
+                          onChange={(e) => setRenamingTitleValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') submitRename(String(sid));
+                            if (e.key === 'Escape') cancelRename();
+                          }}
+                          onBlur={() => submitRename(String(sid))}
+                          aria-label="Rename chat"
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                  <div
+                    ref={isMenuOpen ? historyMenuRef : null}
+                    className="history-item-menu-wrap"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      className="history-item-menu"
+                      aria-label="Options"
+                      aria-expanded={isMenuOpen}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (renamingSessionId === String(sid)) cancelRename();
+                        setOpenHistoryMenuSessionId((prev) => (prev === String(sid) ? null : String(sid)));
+                      }}
+                    />
+                    {isMenuOpen ? (
+                      <div className="history-item-dropdown" role="menu">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="history-item-dropdown-option"
+                          onClick={() => startRename(String(sid), title)}
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="history-item-dropdown-option history-item-dropdown-option-delete"
+                          onClick={() => onHistoryDelete(String(sid))}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               );
             })}
@@ -600,7 +882,31 @@ export function ChatbotApp() {
         </div>
 
         <div className="chat-main">
-        <div className="chatbot-header">
+        {isMobile && isHistoryOpen && (
+          <div
+            className="history-overlay-backdrop"
+            onClick={() => setIsHistoryOpen(false)}
+            onKeyDown={(e) => e.key === 'Escape' && setIsHistoryOpen(false)}
+            role="button"
+            tabIndex={0}
+            aria-label="Close history"
+          />
+        )}
+        <div className={clsx('chatbot-header', isMobile && 'chatbot-header-mobile')}>
+          {isMobile && (
+            <div className="header-back-row">
+              <button
+                className="header-back-btn-mobile"
+                type="button"
+                aria-label="Back"
+                title="Back"
+                onClick={onClose}
+              >
+                <LongBackAeroSvgIcon />
+              </button>
+            </div>
+          )}
+          <div className="header-main-row">
           <div className="header-left">
             <Lottie
               className="ai-icon"
@@ -639,21 +945,29 @@ export function ChatbotApp() {
               </span>
               <span>New</span>
             </button>
-            <button
-              className="header-close-icon-btn"
-              type="button"
-              aria-label="Close"
-              title="Close"
-              onClick={() => {}}
-            >
-              <RedCrossCloseSvgIcon />
-            </button>
+            {!isMobile && (
+              <button
+                className="header-close-icon-btn"
+                type="button"
+                aria-label="Close"
+                title="Close"
+                onClick={onClose}
+              >
+                <RedCrossCloseSvgIcon />
+              </button>
+            )}
+          </div>
           </div>
         </div>
 
         <div className="chatbot-content">
-          <div className="chat-content-column">
-            <div className="messages-container" ref={messagesContainerRef}>
+          <div className={clsx('chat-content-column', isEmptyState && 'empty-state')}>
+            {isEmptyState && <div className="empty-state-spacer" aria-hidden="true" />}
+            {!isEmptyState && (
+            <div
+              className={clsx('messages-container', justLeftEmptyState && 'messages-fly-in')}
+              ref={messagesContainerRef}
+            >
             {messages.map((m, i) => {
               const hasImg = !!(m.sentImageUrl || (m.sentImageUrls && m.sentImageUrls.length > 0));
               return (
@@ -665,16 +979,9 @@ export function ChatbotApp() {
                   {m.role === 'assistant' ? (
                     <div className="assistant-message-frame">
                       <div className="assistant-message-body">
-                        <div
-                          className="assistant-html"
-                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(m.content) }}
-                          onClick={(e) => {
-                            const t = e.target as HTMLElement | null;
-                            if (t && t.tagName === 'IMG') {
-                              const src = (t as HTMLImageElement).src;
-                              if (src) setImagePreviewUrl(src);
-                            }
-                          }}
+                        <AssistantMessageContent
+                          html={m.content || ''}
+                          onImageClick={setImagePreviewUrl}
                         />
 
                         {m.options &&
@@ -690,7 +997,8 @@ export function ChatbotApp() {
                                 <div className="option-question">{question}</div>
                                 <div className="option-choices">
                                   {(m.options?.[question] || []).map((choice) => {
-                                    const sel = (selectedOptions[i] || {})[question];
+                                    const optionsKey = getOptionsKey(m, i);
+                                    const sel = (selectedOptions[optionsKey] || {})[question];
                                     return (
                                       <button
                                         key={choice.key}
@@ -702,6 +1010,11 @@ export function ChatbotApp() {
                                       >
                                         <span className="choice-key">{choice.key}</span>
                                         <span className="choice-value">{choice.value}</span>
+                                        {sel === choice.key ? (
+                                          <span className="option-tick-icon" aria-hidden="true">
+                                            <OptionTickSvgIcon />
+                                          </span>
+                                        ) : null}
                                       </button>
                                     );
                                   })}
@@ -713,50 +1026,80 @@ export function ChatbotApp() {
                       </div>
 
                       {i > 0 ? (
-                        <div className="assistant-message-actions">
-                          <div className="assistant-actions-bubble">
+                        <>
+                          <div className="assistant-message-actions">
+                            <div className="assistant-actions-bubble">
+                              <button
+                                className="assistant-action-btn"
+                                onClick={() => onCopyMessage(m.content || '')}
+                                title="Copy"
+                                aria-label="Copy"
+                                type="button"
+                              >
+                                <CopySvgIcon />
+                              </button>
+                              <span className="assistant-actions-separator" aria-hidden="true" />
+                              <button
+                                type="button"
+                                className={clsx('assistant-action-btn rating-btn', m.good_response === true && 'selected')}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onThumbsUp(m);
+                                }}
+                                aria-label="Thumbs up"
+                                title="Helpful"
+                              >
+                                <ThumbsUpSvgIcon filled={m.good_response === true} />
+                              </button>
+                              <button
+                                type="button"
+                                className={clsx('assistant-action-btn rating-btn', m.good_response === false && 'selected')}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onThumbsDown(m);
+                                }}
+                                aria-label="Thumbs down"
+                                title="Not helpful"
+                              >
+                                <ThumbsDownSvgIcon filled={m.good_response === false} />
+                              </button>
+                            </div>
+                            {hasEchartsContent(m.content || '') ? (
+                              <button
+                                type="button"
+                                className="download-chart-btn"
+                                onClick={onDownloadChart}
+                                aria-label="Download Chart"
+                                title="Download Chart"
+                              >
+                                <DownloadChartSvgIcon />
+                                <span className="download-chart-btn-text">Download Chart</span>
+                              </button>
+                            ) : null}
+                            {m.timeTakenSeconds !== undefined ? (
+                              <span className="time-taken">(Time Taken: {m.timeTakenSeconds} sec)</span>
+                            ) : null}
                             <button
-                              className="assistant-action-btn"
-                              onClick={() => onCopyMessage(m.content || '')}
-                              title="Copy"
-                              aria-label="Copy"
+                              className="assistant-action-btn meta-info-btn"
+                              onClick={() => openMetaForMessage(m)}
+                              title="Show execution details"
+                              aria-label="Show execution details"
                               type="button"
                             >
-                              <CopySvgIcon />
-                            </button>
-                            <span className="assistant-actions-separator" aria-hidden="true" />
-                            <button
-                              type="button"
-                              className={clsx('assistant-action-btn rating-btn', m.good_response === false && 'selected')}
-                              onClick={() => onThumbsDown(m)}
-                              aria-label="Thumbs down"
-                              title="Not helpful"
-                            >
-                              <ThumbsDownSvgIcon filled={m.good_response === false} />
-                            </button>
-                            <button
-                              type="button"
-                              className={clsx('assistant-action-btn rating-btn', m.good_response === true && 'selected')}
-                              onClick={() => onThumbsUp(m)}
-                              aria-label="Thumbs up"
-                              title="Helpful"
-                            >
-                              <ThumbsUpSvgIcon filled={m.good_response === true} />
+                              <InfoSvgIcon />
                             </button>
                           </div>
-                          {m.timeTakenSeconds !== undefined ? (
-                            <span className="time-taken">(Time Taken: {m.timeTakenSeconds} sec)</span>
+                          {m.response_id && feedbackSuggestionsForResponseId === m.response_id ? (
+                            <FeedbackSuggestionsBox
+                              onSendFeedback={onSendFeedbackFromSuggestions}
+                              onClose={() => {
+                                setFeedbackSuggestionsForResponseId(null);
+                                setFeedbackSuggestionsRequestClose(false);
+                              }}
+                              requestClose={feedbackSuggestionsRequestClose}
+                            />
                           ) : null}
-                          <button
-                            className="assistant-action-btn meta-info-btn"
-                            onClick={() => openMetaForMessage(m)}
-                            title="Show execution details"
-                            aria-label="Show execution details"
-                            type="button"
-                          >
-                            <InfoSvgIcon />
-                          </button>
-                        </div>
+                        </>
                       ) : null}
                     </div>
                   ) : (
@@ -800,8 +1143,12 @@ export function ChatbotApp() {
               </div>
             ) : null}
             </div>
+            )}
 
-            <div className="footer-container">
+            <div className={clsx('footer-container', isEmptyState && 'footer-centered')}>
+            {isEmptyState && (
+              <p className="empty-state-prompt" aria-live="polite">Ready when you are.</p>
+            )}
             {tokenLimitReached ? (
               <div className="context-limit-message">
                 <span>Context limit reached. Please start a New Chat</span>
@@ -812,6 +1159,23 @@ export function ChatbotApp() {
             ) : null}
 
             <div className="input-row">
+              {selectedFile && selectedFilePreviewUrl ? (
+                <div className="selected-image-bar">
+                  <div className="selected-image-preview">
+                    <img src={selectedFilePreviewUrl} alt="Selected" />
+                    <button
+                      className="selected-image-remove"
+                      onClick={removeFile}
+                      type="button"
+                      aria-label="Remove image"
+                      title="Remove image"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <span className="selected-image-name">{selectedFile.name}</span>
+                </div>
+              ) : null}
               <div className="input-wrapper">
                 <textarea
                   ref={(r) => {
@@ -821,7 +1185,7 @@ export function ChatbotApp() {
                   value={userMessage}
                   onChange={(e) => setUserMessage(e.target.value)}
                   placeholder="Ask anything you need..."
-                  rows={2}
+                  rows={isMobile ? 1 : 2}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
@@ -830,22 +1194,35 @@ export function ChatbotApp() {
                   }}
                   disabled={isLoading || tokenLimitReached}
                 />
-                <button
-                  className="attach-btn input-icon-btn input-attach-btn"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isLoading || tokenLimitReached}
-                  aria-label="Attach file"
-                  title="Attach file"
-                  type="button"
-                >
-                  📎
-                </button>
                 <div className="input-actions">
                   <button
-                    className="voice-btn input-icon-btn"
-                    disabled
-                    aria-label="Voice (coming soon)"
-                    title="Voice (coming soon)"
+                    className="upload-image-btn input-icon-btn"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isLoading || tokenLimitReached}
+                    aria-label="Upload image"
+                    title="Upload image (PNG, JPEG, JPG)"
+                    type="button"
+                  >
+                    <UploadImageSvgIcon />
+                  </button>
+                  <button
+                    className={clsx('voice-btn input-icon-btn', isListening && 'active')}
+                    disabled={!isSupported || isLoading || tokenLimitReached}
+                    onClick={() => toggleListening()}
+                    aria-label={
+                      !isSupported
+                        ? 'Voice input not supported'
+                        : isListening
+                          ? 'Stop listening'
+                          : 'Start voice input'
+                    }
+                    title={
+                      !isSupported
+                        ? 'Voice input not supported in this browser'
+                        : isListening
+                          ? 'Stop listening'
+                          : 'Start voice input'
+                    }
                     type="button"
                   >
                     <MicrophoneSvgIcon />
@@ -862,22 +1239,12 @@ export function ChatbotApp() {
                   </button>
                 </div>
               </div>
-              <button
-                className="send-btn send-btn-mobile"
-                onClick={() => onSend()}
-                disabled={(!userMessage.trim() && !selectedFile) || tokenLimitReached || isLoading}
-                aria-label="Send message"
-                title="Send message"
-                type="button"
-              >
-                <SendArrowSvgIcon />
-              </button>
               <input
                 ref={(r) => {
                   fileInputRef.current = r;
                 }}
                 type="file"
-                accept="image/*"
+                accept=".png,.jpeg,.jpg,image/png,image/jpeg,image/jpg"
                 onChange={(e) => {
                   const f = e.target.files && e.target.files[0] ? e.target.files[0] : null;
                   if (f) onFileSelected(f);
@@ -887,17 +1254,12 @@ export function ChatbotApp() {
               />
             </div>
 
+            {!isEmptyState && (
             <p className="chat-disclaimer">AI can make mistakes. Please double-check responses</p>
+            )}
 
-            {selectedFile ? (
-              <div style={{ paddingBottom: 8, fontSize: 12, color: '#555' }}>
-                Attachment: <strong>{selectedFile.name}</strong>{' '}
-                <button className="hb-icon-btn" onClick={removeFile} style={{ marginLeft: 8 }} type="button">
-                  ✕
-                </button>
-              </div>
-            ) : null}
             </div>
+            {isEmptyState && <div className="empty-state-spacer" aria-hidden="true" />}
           </div>
         </div>
         </div>
@@ -910,11 +1272,14 @@ export function ChatbotApp() {
           setMetaForMessage(null);
         }}
         title="Execution Details"
+        headerExtra={metaForMessage ? <ExecutionDetailsBadges message={metaForMessage} /> : null}
+        headerNote={metaForMessage ? <ExecutionDetailsDisclaimer message={metaForMessage} /> : null}
         maxWidth={720}
+        hideHeaderBorder={!hasVisibleExecutionDetails(metaForMessage)}
+        hideBody={!hasVisibleExecutionDetails(metaForMessage)}
+        closeIcon={<RedCrossCloseSvgIcon size={44} />}
       >
-        <pre style={{ whiteSpace: 'pre-wrap', margin: 0, fontSize: 12.5 }}>
-          {JSON.stringify(metaForMessage?.meta_data || [], null, 2)}
-        </pre>
+        {metaForMessage ? <ExecutionDetailsContent message={metaForMessage} /> : null}
       </Modal>
 
       <Modal open={!!imagePreviewUrl} onClose={() => setImagePreviewUrl(null)} title="Image Preview" maxWidth={900}>
@@ -927,34 +1292,6 @@ export function ChatbotApp() {
         ) : null}
       </Modal>
 
-      <Modal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} title="Feedback" maxWidth={560}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ fontSize: 13, color: '#555' }}>
-            Tell us what was wrong with the response (optional).
-          </div>
-          <textarea
-            value={feedbackText}
-            onChange={(e) => setFeedbackText(e.target.value)}
-            rows={4}
-            style={{
-              width: '100%',
-              padding: 10,
-              borderRadius: 8,
-              border: '1px solid rgba(0,0,0,0.18)',
-              fontFamily: 'inherit',
-              resize: 'vertical',
-            }}
-          />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button className="hb-icon-btn" onClick={() => setFeedbackOpen(false)} type="button">
-              Cancel
-            </button>
-            <button className="send-btn" onClick={submitThumbsDownFeedback} type="button" style={{ width: 'auto', padding: '0 12px' }}>
-              Submit
-            </button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }

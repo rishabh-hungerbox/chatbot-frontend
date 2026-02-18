@@ -29,6 +29,20 @@ export function extractPlainText(html: string): string {
   }
 }
 
+/** Extract plain text from HTML for copy (strips script/style to avoid chart JS, keeps URLs). */
+export function extractPlainTextForCopy(html: string): string {
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html || '', 'text/html');
+    if (!doc?.body) return extractPlainText(html || '');
+    doc.querySelectorAll('script, style').forEach((el) => el.remove());
+    const raw = doc.body.textContent || '';
+    return normalizePlainText(raw, false);
+  } catch {
+    return extractPlainText(html || '');
+  }
+}
+
 /** Extract plain text from HTML for analytics (strips URLs). */
 export function extractPlainTextForAnalytics(html: string): string {
   try {

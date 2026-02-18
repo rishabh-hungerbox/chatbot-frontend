@@ -5,14 +5,24 @@ export function Modal({
   open,
   onClose,
   title,
+  headerExtra,
+  headerNote,
   children,
   maxWidth = 720,
+  hideHeaderBorder,
+  hideBody,
+  closeIcon,
 }: {
   open: boolean;
   onClose: () => void;
-  title?: string;
+  title?: string | React.ReactNode;
+  headerExtra?: React.ReactNode;
+  headerNote?: React.ReactNode;
   children: React.ReactNode;
   maxWidth?: number;
+  hideHeaderBorder?: boolean;
+  hideBody?: boolean;
+  closeIcon?: React.ReactNode;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -25,23 +35,31 @@ export function Modal({
 
   if (!open) return null;
 
+  const ariaLabel = typeof title === 'string' ? title : 'Dialog';
+
   return ReactDOM.createPortal(
     <div className="hb-modal-overlay" onMouseDown={onClose} role="presentation">
       <div
-        className="hb-modal"
+        className={`hb-modal${closeIcon ? ' hb-modal-has-close-icon' : ''}`}
         style={{ maxWidth }}
         onMouseDown={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label={title || 'Dialog'}
+        aria-label={ariaLabel}
       >
-        <div className="hb-modal-header">
-          <div className="hb-modal-title">{title || ''}</div>
-          <button className="hb-icon-btn" onClick={onClose} aria-label="Close">
-            ✕
-          </button>
+        <div className={`hb-modal-header${hideHeaderBorder ? ' hb-modal-header-no-border' : ''}`}>
+          <div className="hb-modal-header-top">
+            <div className="hb-modal-header-left">
+              <div className="hb-modal-title">{title || ''}</div>
+              {headerExtra}
+            </div>
+            <button className="hb-icon-btn" onClick={onClose} aria-label="Close">
+              {closeIcon ?? '✕'}
+            </button>
+          </div>
+          {headerNote ? <div className="hb-modal-header-note">{headerNote}</div> : null}
         </div>
-        <div className="hb-modal-body">{children}</div>
+        {!hideBody && <div className="hb-modal-body">{children}</div>}
       </div>
     </div>,
     document.body
