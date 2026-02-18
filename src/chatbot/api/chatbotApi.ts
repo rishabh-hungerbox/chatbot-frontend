@@ -36,7 +36,8 @@ export class ChatbotApiClient {
 
   /**
    * NOTE: Endpoints vary across environments. This client is intentionally thin:
-   * provide `VITE_CHATBOT_API_BASE` / `apiBase` pointing to a backend that exposes:
+   * API base is derived from window.location.origin + '/api'. Ensure your deployment
+   * serves or proxies the API at /api. The backend should expose:
    * - POST /v3/dashboard_management/ai-admin-agent
    * - GET  /v3/dashboard_management/ai-admin-agent/history
    * - GET  /v3/dashboard_management/ai-admin-agent/history/:id

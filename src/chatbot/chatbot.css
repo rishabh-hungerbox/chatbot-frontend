@@ -44,6 +44,9 @@
   position: relative;
   overflow: hidden;
   --sidebar-width: 288px;
+  /* Proportional ratio for webview: sidebar ~24% of container, main ~76% (matches full-screen 288:912 at 1200px) */
+  --sidebar-flex-ratio: 24;
+  --main-flex-ratio: 76;
   border-radius: 0;
   border: none;
   background: var(--chat-bg);
@@ -54,9 +57,10 @@
 }
 
 .chatbot-dialog.history-open .history-sidebar {
-  flex: 0 0 var(--sidebar-width);
-  min-width: var(--sidebar-width);
-  width: var(--sidebar-width);
+  flex: 0 0 calc(var(--sidebar-flex-ratio) * 1%);
+  min-width: min(160px, 20vw);
+  max-width: var(--sidebar-width);
+  width: auto;
 }
 
 .chatbot-dialog.history-open .chat-main {
@@ -1160,9 +1164,10 @@
 /* Sidebar - flex child, slides in/out from left, never overlaps main */
 .history-sidebar {
   display: flex;
-  flex: 0 0 var(--sidebar-width);
-  min-width: var(--sidebar-width);
-  width: var(--sidebar-width);
+  flex: 0 0 calc(var(--sidebar-flex-ratio, 24) * 1%);
+  min-width: min(160px, 20vw);
+  max-width: var(--sidebar-width);
+  width: auto;
   padding: 16px;
   flex-direction: column;
   align-items: flex-start;
@@ -1267,6 +1272,7 @@
   min-width: 0;
   position: relative;
 }
+/* Fluid typography: font 13px→10px, line-height 1.15→1.75 as viewport shrinks (above 768px) */
 .history-summary {
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -1275,10 +1281,10 @@
   text-overflow: ellipsis;
   color: var(--Text-Color-text_black_high, #212121);
   font-family: 'HK Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: 13px;
+  font-size: clamp(10px, 0.694vw + 4.67px, 13px);
   font-style: normal;
   font-weight: 400;
-  line-height: 15px;
+  line-height: clamp(1.15, calc(0.00139 * (100vw - 768px) + 1.15), 1.75);
 }
 .history-summary.hidden {
   visibility: hidden;

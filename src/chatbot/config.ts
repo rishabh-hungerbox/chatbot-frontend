@@ -40,16 +40,27 @@ export function getRuntimeConfig(): ChatbotRuntimeConfig {
       break;
   }
 
-  const apiBaseUrl = qs.get("apiBase") || env.VITE_CHATBOT_API_BASE || "";
+  const apiBaseUrl =
+    typeof window !== "undefined" ? `${window.location.origin}/api` : "";
 
-  const authToken =
-    // highest priority: query param
+  const authTokenRaw =
+    // highest priority: query param (token or bearer - both supported for embed use)
     qs.get("token") ||
+    qs.get("bearer") ||
     // then localStorage (can be set by host app)
     localStorage.getItem("hb-chatbot-token") ||
     // finally, build-time env from .env.local
     (import.meta as any).env?.VITE_CHATBOT_TOKEN ||
     undefined;
+  // Strip "Bearer " prefix if passed; store raw token in localStorage for persistence
+  const authToken = authTokenRaw
+    ? authTokenRaw.replace(/^Bearer\s+/i, "").trim()
+    : undefined;
+  if (authToken && (qs.get("token") || qs.get("bearer"))) {
+    try {
+      localStorage.setItem("hb-chatbot-token", authToken);
+    } catch (_e) {}
+  }
 
   const initialSessionId = qs.get("sessionId") || undefined;
   const allowClose =

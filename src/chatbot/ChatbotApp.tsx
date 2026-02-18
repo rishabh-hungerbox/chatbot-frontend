@@ -285,7 +285,6 @@ export function ChatbotApp() {
   }, [messages, scrollToBottom]);
 
   const fetchSessionHistory = useCallback(async () => {
-    if (!cfg.apiBaseUrl) return;
     try {
       const res = await api.getSessionHistory();
       const sessions = Array.isArray((res as any)?.sessions) ? (res as any).sessions : [];
@@ -293,7 +292,7 @@ export function ChatbotApp() {
     } catch {
       // history is optional; ignore
     }
-  }, [api, cfg.apiBaseUrl]);
+  }, [api]);
 
   useEffect(() => {
     fetchSessionHistory();
@@ -363,14 +362,6 @@ export function ChatbotApp() {
   const onSend = useCallback(async (overrideMessage?: string) => {
     const textToSend = (overrideMessage ?? userMessage).trim();
     if ((!textToSend && !selectedFile) || isLoading || tokenLimitReached) return;
-    if (!cfg.apiBaseUrl) {
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: 'Missing API base URL. Pass `?apiBase=...` or set `VITE_CHATBOT_API_BASE`.' },
-      ]);
-      return;
-    }
-
     const fileToSend = selectedFile;
     const fileName = fileToSend?.name;
     const userText = textToSend;
@@ -471,7 +462,6 @@ export function ChatbotApp() {
     }
   }, [
     api,
-    cfg.apiBaseUrl,
     currentSessionId,
     fetchSessionHistory,
     isLoading,
