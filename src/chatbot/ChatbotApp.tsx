@@ -11,19 +11,20 @@ import { extractPlainText, extractPlainTextForCopy } from './utils/plainText';
 import { hasEchartsContent } from './utils/echartsParser';
 import { hasImageContent, extractImageUrlsFromHtml } from './utils/imageUtils';
 import { track } from './utils/analytics';
-import { Modal } from './ui/modals';
-import { useSpeechRecognition } from './hooks/useSpeechRecognition';
-import { useToast } from './ui/Toast';
 import {
+  Modal,
+  useToast,
   ExecutionDetailsBadges,
   ExecutionDetailsContent,
   ExecutionDetailsDisclaimer,
   hasVisibleExecutionDetails,
-} from './ui/ExecutionDetailsModal';
+  HistorySidebar,
+} from './components';
+import { useSpeechRecognition } from './hooks/useSpeechRecognition';
+import { useExecutionDetailsModal } from './hooks/useExecutionDetailsModal';
 import { FeedbackSuggestionsBox } from './ui/FeedbackSuggestionsBox';
 import { AssistantMessageContent } from './ui/AssistantMessageContent';
 import {
-  BackButtonSvgIcon,
   CopySvgIcon,
   DownloadChartSvgIcon,
   HistorySvgIcon,
@@ -151,9 +152,7 @@ export function ChatbotApp() {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const { showToast } = useToast();
-
-  const [metaOpen, setMetaOpen] = useState(false);
-  const [metaForMessage, setMetaForMessage] = useState<ChatMessage | null>(null);
+  const { metaOpen, metaForMessage, openMetaForMessage, closeModal: closeExecutionDetails } = useExecutionDetailsModal();
 
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
 
@@ -179,14 +178,9 @@ export function ChatbotApp() {
     prevEmptyStateRef.current = isEmptyState;
   }, [isEmptyState]);
 
-  const [openHistoryMenuSessionId, setOpenHistoryMenuSessionId] = useState<string | null>(null);
-  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
-  const [renamingTitleValue, setRenamingTitleValue] = useState('');
-  const historyMenuRef = useRef<HTMLDivElement | null>(null);
-  const historyRenameRef = useRef<HTMLDivElement | null>(null);
-  const renameInputRef = useRef<HTMLInputElement | null>(null);
-
   const [isMobile, setIsMobile] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 768px)');
     const handler = () => setIsMobile(mq.matches);
@@ -305,8 +299,6 @@ export function ChatbotApp() {
     fetchSessionHistory();
   }, [fetchSessionHistory]);
 
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-
   const startNewChat = useCallback(() => {
     if (isLoading) {
       showToast('Please wait for the request to complete or cancel it.');
@@ -323,74 +315,19 @@ export function ChatbotApp() {
     setCurrentSessionId(newId);
   }, [isLoading, showToast]);
 
-  // Click outside to close history item options dropdown or cancel rename
-  useEffect(() => {
-    if (!openHistoryMenuSessionId && !renamingSessionId) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (openHistoryMenuSessionId && historyMenuRef.current && !historyMenuRef.current.contains(target)) {
-        setOpenHistoryMenuSessionId(null);
-      }
-      if (renamingSessionId && historyRenameRef.current && !historyRenameRef.current.contains(target)) {
-        setRenamingSessionId(null);
-        setRenamingTitleValue('');
-      }
-    };
-    document.addEventListener('click', handler);
-    return () => document.removeEventListener('click', handler);
-  }, [openHistoryMenuSessionId, renamingSessionId]);
-
-  // Focus rename input when entering rename mode
-  useEffect(() => {
-    if (renamingSessionId && renameInputRef.current) {
-      renameInputRef.current.focus();
-      renameInputRef.current.select();
-    }
-  }, [renamingSessionId]);
-
-  const startRename = useCallback((sessionId: string, currentTitle: string) => {
-    setOpenHistoryMenuSessionId(null);
-    setRenamingSessionId(sessionId);
-    setRenamingTitleValue(currentTitle || '');
-  }, []);
-
-  const cancelRename = useCallback(() => {
-    setRenamingSessionId(null);
-    setRenamingTitleValue('');
-  }, []);
-
-  const submitRename = useCallback(
-    async (sessionId: string) => {
-      const newTitle = renamingTitleValue.trim();
-      const session = (sessionHistory || []).find(
-        (s) => String((s as any)?.session_id || (s as any)?.id) === sessionId
-      );
-      const currentTitle = ((session as any)?.title || 'Previous Chat')?.trim() || '';
-      if (!newTitle || newTitle === currentTitle) {
-        cancelRename();
-        return;
-      }
-      try {
-        await api.renameSessionHistory(sessionId, newTitle);
-        cancelRename();
-        fetchSessionHistory();
-      } catch {
-        cancelRename();
-      }
+  const handleHistoryRename = useCallback(
+    async (sessionId: string, newTitle: string) => {
+      await api.renameSessionHistory(sessionId, newTitle);
+      fetchSessionHistory();
     },
-    [api, cancelRename, fetchSessionHistory, renamingTitleValue, sessionHistory]
+    [api, fetchSessionHistory]
   );
 
-  const onHistoryDelete = useCallback(
+  const handleHistoryDelete = useCallback(
     async (sessionId: string) => {
-      try {
-        await api.deleteSessionHistory(sessionId);
-        setOpenHistoryMenuSessionId(null);
-        if (sessionId === currentSessionId) startNewChat();
-        fetchSessionHistory();
-      } catch {
-        // ignore
-      }
+      await api.deleteSessionHistory(sessionId);
+      if (sessionId === currentSessionId) startNewChat();
+      fetchSessionHistory();
     },
     [api, currentSessionId, fetchSessionHistory, startNewChat]
   );
@@ -686,10 +623,6 @@ export function ChatbotApp() {
     [getOptionsKey, isLatestOptionsMessage, messages, onSend, selectedOptions]
   );
 
-  const openMetaForMessage = useCallback((m: ChatMessage) => {
-    setMetaForMessage(m);
-    setMetaOpen(true);
-  }, []);
 
   const onThumbsUp = useCallback(
     async (m: ChatMessage) => {
@@ -874,116 +807,15 @@ export function ChatbotApp() {
   return (
     <div className="chatbot-root">
       <div className={clsx('chatbot-dialog', isHistoryOpen && 'history-open')}>
-        <div className={clsx('history-sidebar', isHistoryOpen && 'open')}>
-          <div className="history-sidebar-header">
-            <span>Previous Chats</span>
-            <button
-              className="history-header-action"
-              type="button"
-              aria-label="Collapse history"
-              title="Collapse history"
-              onClick={() => setIsHistoryOpen(false)}
-            >
-              <BackButtonSvgIcon />
-            </button>
-          </div>
-          <div className="history-list">
-            {(sessionHistory || []).map((s) => {
-              const sid = (s as any)?.session_id || (s as any)?.id;
-              const title = (s as any)?.title || 'Previous Chat';
-              const isMenuOpen = openHistoryMenuSessionId === String(sid);
-              return (
-                <div
-                  key={String(sid)}
-                  ref={renamingSessionId === String(sid) ? historyRenameRef : null}
-                  className={clsx(
-                    'history-item',
-                    String(sid) === currentSessionId && 'active',
-                    renamingSessionId === String(sid) && 'is-renaming'
-                  )}
-                  onClick={() => {
-                    if (renamingSessionId !== String(sid)) onSelectHistorySession(s);
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (renamingSessionId === String(sid)) return;
-                    if (e.key === 'Enter' || e.key === ' ') onSelectHistorySession(s);
-                  }}
-                  title={title}
-                >
-                  <div className="history-summary-wrap">
-                    <div className={clsx('history-summary', renamingSessionId === String(sid) && 'hidden')}>
-                      {title}
-                    </div>
-                    {renamingSessionId === String(sid) ? (
-                      <div
-                        className="history-rename-overlay"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          ref={renameInputRef}
-                          type="text"
-                          className="history-rename-input"
-                          value={renamingTitleValue}
-                          onChange={(e) => setRenamingTitleValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') submitRename(String(sid));
-                            if (e.key === 'Escape') cancelRename();
-                          }}
-                          onBlur={() => submitRename(String(sid))}
-                          aria-label="Rename chat"
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                  <div
-                    ref={isMenuOpen ? historyMenuRef : null}
-                    className="history-item-menu-wrap"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <button
-                      type="button"
-                      className="history-item-menu"
-                      aria-label="Options"
-                      aria-expanded={isMenuOpen}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (renamingSessionId === String(sid)) cancelRename();
-                        setOpenHistoryMenuSessionId((prev) => (prev === String(sid) ? null : String(sid)));
-                      }}
-                    />
-                    {isMenuOpen ? (
-                      <div className="history-item-dropdown" role="menu">
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="history-item-dropdown-option"
-                          onClick={() => startRename(String(sid), title)}
-                        >
-                          Rename
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="history-item-dropdown-option history-item-dropdown-option-delete"
-                          onClick={() => onHistoryDelete(String(sid))}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-            {sessionHistory && sessionHistory.length === 0 ? (
-              <div className="history-item">
-                <div className="history-summary">Nothing...</div>
-              </div>
-            ) : null}
-          </div>
-        </div>
+        <HistorySidebar
+          sessionHistory={sessionHistory}
+          currentSessionId={currentSessionId}
+          isHistoryOpen={isHistoryOpen}
+          onCollapse={() => setIsHistoryOpen(false)}
+          onSelectSession={onSelectHistorySession}
+          onRename={handleHistoryRename}
+          onDelete={handleHistoryDelete}
+        />
 
         <div className="chat-main">
         {isMobile && isHistoryOpen && (
@@ -1403,10 +1235,7 @@ export function ChatbotApp() {
 
       <Modal
         open={metaOpen}
-        onClose={() => {
-          setMetaOpen(false);
-          setMetaForMessage(null);
-        }}
+        onClose={closeExecutionDetails}
         title="Execution Details"
         headerExtra={metaForMessage ? <ExecutionDetailsBadges message={metaForMessage} /> : null}
         headerNote={metaForMessage ? <ExecutionDetailsDisclaimer message={metaForMessage} /> : null}

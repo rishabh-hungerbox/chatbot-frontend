@@ -1,6 +1,6 @@
 import './App.css';
 import { ChatbotApp } from './chatbot/ChatbotApp';
-import { ToastProvider } from './chatbot/ui/Toast';
+import { ToastProvider } from './chatbot/components';
 
 function App() {
   return (

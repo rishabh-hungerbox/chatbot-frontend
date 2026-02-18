@@ -5,7 +5,7 @@ import {
   QueryStepIcon,
   ReasoningStepIcon,
   ToolCallStepIcon,
-} from './icons';
+} from '../ui/icons';
 import { useToast } from './Toast';
 import type { ChatMessage } from '../types';
 import './execution-details.css';

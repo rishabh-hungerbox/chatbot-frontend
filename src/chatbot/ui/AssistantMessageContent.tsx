@@ -1,6 +1,6 @@
 import DOMPurify from 'dompurify';
 import { parseHtmlWithEcharts } from '../utils/echartsParser';
-import { EChartsBlock } from './EChartsBlock';
+import { EChartsBlock } from '../components';
 
 /** Sanitizes HTML, stripping scripts. Used for non-chart segments. */
 function sanitizeHtml(html: string): string {
