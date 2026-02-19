@@ -1,23 +1,10 @@
 <a name="top"></a>
 
-<style>
-  .chatbot-title-wrap { text-align: center; }
-  .chatbot-title-wrap img { vertical-align: -0.125em; }
-  .chatbot-title-dazzle {
-    color: #3a1593;
-    animation: chatbot-dazzle 2s ease-in-out infinite;
-  }
-  @keyframes chatbot-dazzle {
-    0%, 100% { opacity: 1; filter: brightness(1); }
-    50% { opacity: 0.85; filter: brightness(1.25); }
-  }
-</style>
-
-<div align="center" class="chatbot-title-wrap">
-
-# <img src="https://s3.ap-south-1.amazonaws.com/qa-content-1.hungerbox.com/chat_logo_gif.gif" width="32" height="32" /> <span class="chatbot-title-dazzle" style="color: #3a1593;">Chatbot Micro Frontend</span>
-
-</div>
+<p align="center">
+  <img src="https://s3.ap-south-1.amazonaws.com/qa-content-1.hungerbox.com/chat_logo_gif.gif" width="32" height="32" alt="Chatbot" align="middle" />
+  &nbsp;
+  <img src="assets/readme-title.svg" height="32" alt="Chatbot Micro Frontend" align="middle" />
+</p>
 
 Standalone React frontend for the Admin AI Assistant. Embed in iframes from the admin dashboard or other apps.
 
