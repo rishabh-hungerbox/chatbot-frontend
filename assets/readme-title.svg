@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="280" height="32" viewBox="0 0 280 32">
   <style>
-    .title { font: bold 22px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill: #3a1593; }
+    .title { font: bold 22px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill: #bda6f2; }
   </style>
   <text x="0" y="24" class="title">Chatbot Micro Frontend</text>
 </svg>
